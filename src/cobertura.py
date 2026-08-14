@@ -41,32 +41,45 @@ def informe() -> int:
 
         esperados = meses_esperados()
         faltan = [m for m in esperados if m not in filas]
-        problemas = [r for r in filas.values() if r[2] != "cargado"]
+        # 'parcial' está cargado, con una nota. 'pendiente' y 'degradado' no lo están.
+        con_datos = [r for r in filas.values() if r[2] in ("cargado", "parcial")]
+        averiados = [r for r in filas.values() if r[2] not in ("cargado", "parcial")]
+        con_nota = [r for r in filas.values() if r[2] == "parcial"]
 
         print(f"meses esperados : {len(esperados)}")
-        print(f"meses cargados  : {len(filas) - len(problemas)}")
-        print(f"meses con aviso : {len(problemas)}")
+        print(f"meses con datos : {len(con_datos)}")
+        print(f"meses con nota  : {len(con_nota)}")
+        print(f"meses averiados : {len(averiados)}")
         print(f"meses ausentes  : {len(faltan)}")
 
-        if problemas:
-            print("\ncon aviso:")
-            for a, m, estado, reg, pct in sorted(problemas):
-                print(f"  {a}-{m:02d}  {estado:<10} {reg or 0:>7,} registros  {pct or 0:>5.1f}% cerrado")
+        for etiqueta, grupo in (("con nota", con_nota), ("averiados", averiados)):
+            if grupo:
+                print(f"\n{etiqueta}:")
+                for a, m, estado, reg, pct in sorted(grupo):
+                    print(f"  {a}-{m:02d}  {estado:<10} {reg or 0:>7,} registros  {pct or 0:>5.1f}% cerrado")
 
-        if faltan:
-            print("\nausentes:", ", ".join(f"{a}-{m:02d}" for a, m in faltan[:24]))
-            if len(faltan) > 24:
-                print(f"  ... y {len(faltan) - 24} más")
-
-        # Los últimos 4 meses no son un problema: es la curva de maduración normal.
+        # Un hueco histórico es backfill pendiente, no una avería: se informa y ya.
+        # Un hueco en la ventana operativa SÍ es avería: es lo que mantienen los trabajos
+        # diario y semanal, y significa que llevan días sin cargar.
         hoy = dt.date.today()
-        recientes = [
-            (a, m) for a, m in faltan
-            if (hoy.year - a) * 12 + (hoy.month - m) <= 4
-        ]
-        criticos = [m for m in faltan if m not in recientes]
-        if criticos:
-            print(f"\nAUSENCIAS CRÍTICAS (fuera de la ventana de maduración): {len(criticos)}")
+
+        def antiguedad(m: tuple[int, int]) -> int:
+            return (hoy.year - m[0]) * 12 + (hoy.month - m[1])
+
+        operativos = [m for m in faltan if antiguedad(m) <= VENTANA_OPERATIVA_MESES]
+        historicos = [m for m in faltan if antiguedad(m) > VENTANA_OPERATIVA_MESES]
+
+        if historicos:
+            print(f"\nbackfill pendiente: {len(historicos)} meses históricos sin cargar")
+            print("  " + ", ".join(f"{a}-{m:02d}" for a, m in historicos[:12])
+                  + (f" ... y {len(historicos) - 12} más" if len(historicos) > 12 else ""))
+
+        if operativos or averiados:
+            if operativos:
+                print(f"\nAVERÍA: faltan {len(operativos)} meses de la ventana operativa "
+                      f"de {VENTANA_OPERATIVA_MESES} meses: "
+                      + ", ".join(f"{a}-{m:02d}" for a, m in operativos))
+            print("Los trabajos diario y semanal deberían mantenerlos. Ver docs/operacion.md §2.")
             return 1
 
         cur.execute("select round(sum(mb),2) from v_tamano_base")

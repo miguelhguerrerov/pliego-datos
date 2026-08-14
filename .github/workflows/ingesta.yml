@@ -1,22 +1,26 @@
-name: ingesta diaria
+name: ingesta
 
-# Mes en curso y anterior: ahi nacen los estados planning y tender, que son el
-# producto de radar. Son ~3 MB, cuesta segundos.
-# Mantiene ademas activo el proyecto de Supabase, que en plan gratuito se pausa
-# tras una semana de inactividad.
+# Diaria: mes en curso y anterior. Ahi nacen los estados planning y tender, que son el
+# producto de radar. Son ~3 MB, cuesta segundos, y mantiene activo el proyecto de
+# Supabase, que en plan gratuito se pausa tras una semana de inactividad.
+#
+# Con inputs desde/hasta sirve tambien para el backfill: 140 meses, menos de una hora.
 on:
   schedule:
     - cron: "0 9 * * *"      # 09:00 UTC = 04:00 Ecuador
   workflow_dispatch:
     inputs:
-      mes:
-        description: "AAAA-MM (vacio = incremental)"
+      desde:
+        description: "AAAA-MM inicial (vacio = incremental)"
+        required: false
+      hasta:
+        description: "AAAA-MM final"
         required: false
 
 jobs:
   ingesta:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
 
@@ -35,13 +39,15 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
-          if [ -n "${{ inputs.mes }}" ]; then
-            python src/ingesta.py --mes "${{ inputs.mes }}"
+          if [ -n "${{ inputs.desde }}" ]; then
+            python src/ingesta.py --desde "${{ inputs.desde }}" --hasta "${{ inputs.hasta || inputs.desde }}"
           else
             python src/ingesta.py --incremental
           fi
 
       - name: Informe de cobertura
+        # Informativo mientras el backfill este en curso: falla solo si faltan meses
+        # de la ventana operativa, que es lo que este trabajo mantiene.
         if: always()
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
