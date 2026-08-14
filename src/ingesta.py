@@ -50,6 +50,14 @@ def a_proceso_resumen(mes: MesNormalizado) -> list[tuple]:
     de radar, no ruido. Ver docs/decisiones.md D-008.
     """
     tender = {t["ocid"]: t for t in mes.tablas["tender"]}
+    # Los procesos en estado planning NO tienen fila en tender: su presupuesto vive en
+    # planning.budget_amount. Sin esto el radar muestra oportunidades sin monto, que es
+    # justo la cifra que las hace accionables. Ver docs/decisiones.md D-014.
+    presupuesto = {}
+    for pl in mes.tablas["planning"]:
+        v = numero(pl.get("budget_amount"))
+        if v is not None:
+            presupuesto.setdefault(pl["ocid"], v)
     awards: dict[str, float] = {}
     for a in mes.tablas["awards"]:
         v = numero(a.get("amount"))
@@ -87,7 +95,7 @@ def a_proceso_resumen(mes: MesNormalizado) -> list[tuple]:
             None,                                   # categoria_id: la pone clasifica.py
             extraer_ruc(r.get("buyer_id")),
             proveedor.get(ocid),
-            numero(t.get("value_amount")),
+            numero(t.get("value_amount")) or presupuesto.get(ocid),
             awards.get(ocid),
             None,                                   # provincia: solo desde la ruta JSON
             (t.get("title") or t.get("description") or "")[:200] or None,

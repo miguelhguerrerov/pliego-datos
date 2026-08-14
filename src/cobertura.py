@@ -17,6 +17,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 PRIMER_ANIO = 2015
 
+# Meses que los trabajos diario y semanal mantienen al día. Un hueco aquí es avería;
+# fuera de aquí es backfill pendiente, que no es lo mismo y no debe fallar la ejecución.
+VENTANA_OPERATIVA_MESES = 6
+
 
 def meses_esperados(hasta: dt.date | None = None) -> list[tuple[int, int]]:
     hasta = hasta or dt.date.today()

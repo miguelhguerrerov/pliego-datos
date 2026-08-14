@@ -252,3 +252,27 @@ como literal ni como escape. Al crear estos archivos, las herramientas de edici�
 normalizaron los literales tres veces seguidas, y en una de ellas el detector pasó a
 marcar como corrupto cualquier texto en español bien escrito. Lo mismo aplica a las
 cadenas de prueba: se construyen con `encode`/`decode`, nunca se escriben.
+
+---
+
+## D-014 · El referencial de los procesos en planificación viene de `planning`, no de `tender`
+**2026-08-14**
+
+**Contexto.** Tras la primera carga correcta, una consulta al radar devolvió cero filas:
+los procesos en estado `planning` salían **sin monto**.
+
+**Causa.** Un release en sola planificación no tiene fila en `tender`, y el normalizador
+leía el referencial solo de `tender.value_amount`. El presupuesto de esos procesos está en
+`planning.budget_amount`.
+
+**Por qué importa.** En agosto de 2026, **1 059 de 1 546 registros** están en sola
+planificación. Sin el monto, el radar —que es la razón para volver cada día— muestra
+oportunidades sin la cifra que las hace accionables.
+
+**Decisión.** El referencial se toma de `tender.value_amount` y, si no existe, de
+`planning.budget_amount`.
+
+**Consecuencias.** Es el tipo de fallo que no rompe nada: la ingesta pasa, las pruebas
+pasan, la base se llena, y el producto queda inservible en silencio. Solo apareció al
+mirar los datos cargados con la consulta que haría un usuario. Conviene añadir esa
+comprobación a `test_agregados.py` cuando exista.
