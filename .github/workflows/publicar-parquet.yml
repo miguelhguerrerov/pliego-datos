@@ -1,0 +1,45 @@
+name: publicar parquet
+
+# La capa que sostiene la arquitectura: el detalle integro en Parquet sobre releases.
+# Es tambien la copia de seguridad (el plan gratuito de Supabase no tiene) y el
+# dataset publico. Ver docs/decisiones.md D-002.
+#
+# Mensual, no diaria: el detalle de un mes cerrado ya no cambia, y la ruta JSON es
+# mucho mas pesada que la CSV (12 metodos por mes).
+on:
+  schedule:
+    - cron: "0 11 3 * *"     # dia 3 de cada mes
+  workflow_dispatch:
+    inputs:
+      desde:
+        description: "AAAA-MM inicial"
+        required: true
+      hasta:
+        description: "AAAA-MM final"
+        required: false
+
+permissions:
+  contents: write            # necesario para crear releases y subir activos
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Publicar detalle en Parquet
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          if [ -n "${{ inputs.desde }}" ]; then
+            python src/publicar.py --desde "${{ inputs.desde }}" --hasta "${{ inputs.hasta || inputs.desde }}"
+          else
+            python src/publicar.py --mes "$(date -u -d 'last month' +%Y-%m)"
+          fi
