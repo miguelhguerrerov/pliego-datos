@@ -21,3 +21,10 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: python src/agrega.py
+
+      - name: Guardias sobre la base cargada
+        # Presupuesto de espacio y cifras de control. Detecta corrupcion silenciosa:
+        # un normalizador que empieza a descartar filas, o una fuente que cambia.
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python -m pytest pruebas/test_presupuesto.py -q
