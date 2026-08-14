@@ -415,3 +415,44 @@ mes antes de insertarlo y deduplica en memoria antes de copiar.
 que solo existe si alguien consulta por él. En una tabla de escritura masiva y lectura
 secuencial, todos los índices son puro coste. Conviene preguntarse **qué consulta lo usa**
 antes de crear cada uno — y en este proyecto, además, medir el tamaño después.
+
+---
+
+## D-019 · La tesis del producto se medía sobre dos años, no sobre uno
+**2026-08-14**
+
+**Contexto.** Al contrastar los agregados calculados contra las cifras documentadas, el
+ratio de baja cuadró al tercer decimal —Cotización 0,951 contra 0,951— pero **la métrica
+central del producto no**: el tramo de 500 K a 2 M daba 8,1 compradores distintos por
+proveedor frente a los 15,6 documentados.
+
+**Causa.** El script de análisis original acumulaba compradores distintos sobre **2023 y
+2024 juntos**; `entidad_ano.n_contrapartes` los cuenta **dentro de un solo año**. Dos
+métricas distintas con el mismo nombre. Reconstruido desde `hecho_mes`:
+
+| Tramo 2024 | 1 año | 2 años | Documentado |
+|---|---|---|---|
+| 5 K – 25 K | 1,5 | 2,2 | 2,2 |
+| 25 K – 100 K | 2,2 | 3,2 | 3,2 |
+| **100 K – 500 K** | **4,2** | **6,1** | 6,2 |
+| **500 K – 2 M** | **10,2** | **15,5** | 15,6 |
+| 2 M – 10 M | 25,6 | 35,1 | 35,5 |
+| > 10 M | 53,6 | 79,9 | 79,1 |
+
+La columna de dos años reproduce lo documentado. La cifra no era falsa: estaba **sin
+etiquetar**.
+
+**Decisión.** La tesis se enuncia con su ventana explícita. En el producto se usa la
+**anual** —1,5 → 2,2 → 4,2 → 10,2 → 25,6 → 53,6— porque es la que responde a «con cuántos
+compradores trabajo este año», que es la pregunta del suscriptor. La de dos años queda
+como dato de contexto, dicha como tal.
+
+**Consecuencias.** Hay que corregir `propuesta-valor.md`, el `CLAUDE.md` y la propuesta
+publicada, donde la cifra aparece como argumento de venta.
+
+La tesis **no cambia**: la escalada monótona está en las dos columnas y sigue siendo el
+hallazgo que sostiene el producto. Lo que cambia es que ahora dice de qué ventana habla.
+
+**Consecuencia de método.** El invariante 11 exige mostrar el número de observaciones
+junto a cada cifra agregada. Le falta una mitad: **junto a la ventana temporal**. Una
+media sin periodo es tan ambigua como una media sin `n`.

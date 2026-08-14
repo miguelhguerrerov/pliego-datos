@@ -7,17 +7,22 @@ mostrar la pantalla, no al revés.
 
 ## 1. La tesis, y está medida
 
-Número medio de entidades distintas con las que trabaja un proveedor, por tramo de facturación
-al Estado en 2024:
+Número medio de **compradores distintos en un año** con los que trabaja un proveedor, por
+tramo de facturación al Estado en 2024. Calculado sobre los 20 691 proveedores con
+adjudicación ese año:
 
-| Tramo | Entidades por proveedor |
-|---|---|
-| 5 K – 25 K | 2,2 |
-| 25 K – 100 K | 3,2 |
-| **100 K – 500 K** | **6,2** |
-| **500 K – 2 M** | **15,6** |
-| 2 M – 10 M | 35,5 |
-| > 10 M | 79,1 |
+| Tramo | En un año | En dos años |
+|---|---|---|
+| 5 K – 25 K | 1,5 | 2,2 |
+| 25 K – 100 K | 2,2 | 3,2 |
+| **100 K – 500 K** | **4,2** | 6,1 |
+| **500 K – 2 M** | **10,2** | 15,5 |
+| 2 M – 10 M | 25,6 | 35,1 |
+| > 10 M | 53,6 | 79,9 |
+
+Se usa la columna anual: responde a «con cuántos compradores trabajo este año», que es la
+pregunta del suscriptor. La de dos años se incluye porque una versión anterior de este
+documento la daba sin decir la ventana. Ver D-019.
 
 **Crecer, en este mercado, es diversificar la cartera de compradores.** No es una correlación
 decorativa: es la definición operativa del crecimiento de un proveedor del Estado ecuatoriano.

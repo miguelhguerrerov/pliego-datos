@@ -76,15 +76,19 @@ horas de descarga.
   | 2025 · 188 139 | 2026 · 81 672 (a agosto).
 
 ### Segmentación de proveedores en 2024
-| Tramo de facturación | Empresas | % del monto | Repiten desde 2023 | Entidades por proveedor |
-|---|---|---|---|---|
-| < 5 K | 1 021 | 0,0% | 61,6% | 3,0 |
-| 5 K – 25 K | 6 073 | 1,1% | 58,8% | 2,2 |
-| 25 K – 100 K | 6 617 | 5,1% | 52,3% | 3,2 |
-| **100 K – 500 K** | **5 010** | **17,0%** | 57,8% | 6,2 |
-| **500 K – 2 M** | **1 687** | **23,2%** | 66,6% | 15,6 |
-| 2 M – 10 M | 496 | 28,4% | 74,0% | 35,5 |
-| > 10 M | 68 | 25,2% | 80,9% | 79,1 |
+| Tramo de facturación | Empresas | % del monto | Repiten desde 2023 | Compradores/año | En 2 años |
+|---|---|---|---|---|---|
+| < 5 K | 1 021 | 0,0% | 61,6% | 1,5 | 3,1 |
+| 5 K – 25 K | 6 073 | 1,1% | 58,8% | 1,5 | 2,2 |
+| 25 K – 100 K | 6 617 | 5,1% | 52,3% | 2,2 | 3,2 |
+| **100 K – 500 K** | **5 010** | **17,0%** | 57,8% | **4,2** | 6,1 |
+| **500 K – 2 M** | **1 687** | **23,2%** | 66,6% | **10,2** | 15,5 |
+| 2 M – 10 M | 496 | 28,4% | 74,0% | 25,6 | 35,1 |
+| > 10 M | 68 | 25,2% | 80,9% | 53,6 | 79,9 |
+
+**Cuidado con la ventana** (D-019): las cifras de compradores por proveedor que circularon
+primero eran de DOS años presentadas como si fueran anuales. En el producto se usa la
+anual. Toda media va con su ventana temporal, igual que va con su `n`.
 
 Mediana de facturación 49 919 USD. Concentración: top-10 = 10,34%, top-100 = 29,08%.
 **La columna de entidades por proveedor es la tesis del producto**: crecer es diversificar
