@@ -1,0 +1,203 @@
+# Registro de decisiones
+
+Una entrada por decisión difícil de revertir. Formato fijo: fecha, contexto, opciones,
+decisión, consecuencias aceptadas.
+
+**Regla:** violar un invariante del `CLAUDE.md` exige añadir aquí una entrada nueva que lo
+justifique, *antes* de escribir el código que lo viola.
+
+---
+
+## D-001 · Descarga masiva en lugar de la API paginada
+**2026-08-14**
+
+**Contexto.** El notebook original recorre `api/search_ocds` página a página. Medido: el
+servidor impone `X-RateLimit-Limit: 60` por minuto y 10 registros por página fijos —
+`page_size` y `limit` se ignoran. El histórico son 277 427 páginas.
+
+**Opciones.** (a) API paginada con reintentos. (b) Endpoint de descarga masiva
+`download?type=…&year=&month=&method=`, hallado inspeccionando el portal de datos abiertos.
+
+**Decisión.** Descarga masiva como ruta principal. La API paginada queda solo para el refresco
+del día en curso, que es lo único que la descarga masiva no cubre con inmediatez.
+
+**Consecuencias.** El backfill pasa de ~77 h a menos de 1 h. Además el JSON masivo trae
+`items[]`, `tenderers[]`, `bids` y `parties[]`, que la ruta paginada no exponía. Se acepta
+depender de un endpoint no documentado formalmente: se mitiga con la prueba de contrato.
+
+---
+
+## D-002 · El detalle vive en Parquet sobre releases de GitHub, no en Postgres
+**2026-08-14**
+
+**Contexto.** El detalle normalizado de los 11 años pesa ~4 GB de datos, ~12–15 GB en Postgres
+con índices. El plan gratuito de Supabase da 500 MB.
+
+**Opciones.** (a) Recortar el histórico. (b) Pagar Supabase Pro desde el día uno.
+(c) Separar por capas: agregados en Postgres, detalle en Parquet servido por CDN.
+
+**Decisión.** (c). Los releases de GitHub no tienen límite práctico de tamaño, se sirven por
+CDN y cuestan cero. El detalle fino se consulta con DuckDB en el navegador.
+
+**Consecuencias.** Se conserva la serie completa sin pagar. Añade una capa que no existiría
+con Postgres grande. **La capa se conserva aunque más adelante se pague Pro**: es también la
+copia de seguridad —reconstruye la base entera en menos de una hora— y el activo público que
+da tráfico orgánico.
+
+---
+
+## D-003 · El cliente principal es el contratista, no la entidad contratante
+**2026-08-14**
+
+**Contexto.** Los mismos datos sirven a ambos lados del mercado.
+
+**Decisión.** El proveedor del Estado. Retorno directo y medible —más contratos ganados—,
+decide la compra solo, y son 20 972 empresas frente a 5 066 entidades.
+
+**Consecuencias.** La entidad contratante queda como plan institucional posterior, con la
+pregunta invertida: de «a quién le vendo» a «quién me está cobrando de más». El diseño de
+agregados sirve a ambos sin cambios, así que la decisión es reversible en producto aunque no
+en mensaje.
+
+---
+
+## D-004 · Segmento objetivo: facturación de 100 K a 2 M USD
+**2026-08-14**
+
+**Contexto.** Segmentación medida sobre los 20 972 proveedores de 2024, cruzada con
+recurrencia respecto a 2023 y número de entidades por proveedor.
+
+**Decisión.** El tramo de 100 K a 2 M: 6 697 empresas, 31,9% de los proveedores y 40,2% del
+monto.
+
+**Por qué se descartan los extremos.** Debajo de 25 K son el 34% de los proveedores y el 1,1%
+del monto: una suscripción sería entre el 2% y el 12% de todo lo que facturan. El tramo de
+25 K a 100 K tiene la recurrencia más baja de la tabla, 52,3%: población flotante. Encima de
+2 M ya trabajan con 35 a 79 entidades y tienen área de licitaciones.
+
+**Consecuencias.** El precio se ancla en 600 USD/año, el 0,25% de lo que factura la mediana
+del tramo.
+
+---
+
+## D-005 · Cobro por transferencia y factura electrónica
+**2026-08-14**
+
+**Contexto.** Stripe no opera en Ecuador; una empresa ecuatoriana no puede recibir pagos por
+ahí. Verificado en agosto de 2026.
+
+**Decisión.** Transferencia bancaria más factura electrónica desde el primer cliente, con plan
+anual anticipado y descuento de dos meses. PayPhone cuando la cobranza manual duela; Kushki o
+PlaceToPay con volumen y recurrencia.
+
+**Consecuencias.** Cero comisión y cero integración en el MVP. La cobranza es manual, lo que
+el pago anual anticipado convierte en una tarea al año por cliente en vez de doce. Se acepta
+no tener plan mensual hasta que haya pasarela integrada.
+
+---
+
+## D-006 · Clasificación por embeddings y agrupamiento, no registro a registro
+**2026-08-14**
+
+**Contexto.** El código CPC solo viene poblado en catálogo electrónico. En el resto de métodos
+el objeto contractual es texto libre. Sin categoría normalizada no hay benchmark de precios ni
+compradores huérfanos.
+
+**Opciones.** (a) Un modelo de lenguaje clasifica cada uno de los 2,77 M de procesos.
+(b) Embeddings de todos, agrupamiento, y el modelo etiqueta solo los grupos.
+
+**Decisión.** (b). Medido contra DeepInfra: BGE-M3 devuelve 1024 dimensiones y separa bien el
+dominio en español —«suero antiofídico» contra «medicamentos» da 0,663; contra «vía asfaltada»
+0,477—. A ~30 tokens por objeto, embeber los 2,77 M cuesta menos de 1 USD.
+
+**Consecuencias.** El coste baja de ~50 USD a menos de 3. Añade un paso de agrupamiento.
+Prueba adicional que confirma la decisión: pedirle al modelo que clasificara «suero antiofídico
+polivalente» sin contexto devolvió «medicina veterinaria», que es incorrecto. Etiquetar grupos
+con sus miembros a la vista da mejor resultado que etiquetar registros sueltos.
+
+---
+
+## D-007 · Cuenta de Supabase separada y temporal para el MVP
+**2026-08-14**
+
+**Contexto.** La cuenta personal tenía sus 2 proyectos activos ocupados. Comprobado con un 400
+explícito: **el límite de proyectos activos del plan gratuito es por usuario, no por
+organización** — crear una organización nueva no da cupo.
+
+**Decisión.** Cuenta separada con la organización `miguelhguerrerov@gmail.com` para el MVP.
+Al llegar los clientes se migra a la cuenta personal con plan Pro.
+
+**Consecuencias.** Se acepta una zona gris de los términos de Supabase, acotada porque es
+temporal y termina en un plan de pago. Para que la migración cueste media jornada y no dos
+días, los invariantes 5, 6, 7 y 8 del `CLAUDE.md` pasan de buena práctica a obligación:
+migraciones versionadas, enlace mágico sin contraseñas, tablas enlazadas por correo y cero
+referencias al proyecto en el código. Y el invariante 14 —exportación nocturna de las tablas de
+suscriptores— existe porque el plan gratuito no tiene copias de seguridad.
+
+---
+
+## D-008 · Los estados intermedios son el producto, no ruido
+**2026-08-14**
+
+**Contexto.** El notebook original solo consulta procesos adjudicados. El campo `tag` de cada
+release es en realidad la máquina de estados del proceso, y la fuente publica los intermedios.
+Medido: en agosto de 2026, 1 059 de 1 546 registros estaban en sola planificación.
+
+**Decisión.** El embudo de `planning` y `tender` entra en la fase 2, no en la 4.
+
+**Consecuencias.** No cuesta ingesta adicional: los registros vienen en la misma descarga que
+ya se procesa. Cambia el orden del plan de construcción — el radar es la razón para volver cada
+día; el benchmark es la razón para pagar.
+
+---
+
+## D-009 · Ventana de análisis con cuatro meses de retraso
+**2026-08-14**
+
+**Contexto.** Curva de maduración medida en 2026: enero al 98,3% de cierre, junio al 89,0%,
+julio al 59,0%, agosto al 30,9%. Un mes tarda cuatro o cinco meses en cerrar; los registros no
+solo se añaden, se completan.
+
+**Decisión.** Las estadísticas de mercado excluyen los últimos 4 meses. El radar, en cambio,
+usa el dato del día.
+
+**Consecuencias.** Dos ventanas distintas sobre la misma base, y así deben verse en el
+producto. Sin esta regla, un benchmark calculado sobre un mes al 59% de cierre saldría sesgado
+sin que nada lo advirtiera.
+
+---
+
+## D-010 · Dominio propio `pliego.ec`
+**2026-08-14**
+
+**Contexto.** `pliego.ec` está disponible por 35 USD al año. La cuenta de Resend ya tiene
+`darkmelon.com` verificado, y el plan gratuito permite un solo dominio.
+
+**Decisión.** Registrar `pliego.ec` para el sitio. El correo sigue saliendo de `darkmelon.com`
+mientras dure el plan gratuito de Resend.
+
+**Consecuencias.** Se acepta la disonancia temporal de que el sitio sea `pliego.ec` y el
+remitente `darkmelon.com`. Se resuelve al pasar a Resend Pro, verificando entonces
+`avisos.pliego.ec` como subdominio dedicado de envío — que es lo que protege la reputación del
+dominio corporativo. Hasta entonces, volumen bajo y opt-in real.
+
+---
+
+## D-011 · La codificación de la fuente es correcta; no se repara, se valida
+**2026-08-14**
+
+**Contexto.** Durante el análisis se anotó que el servidor devolvía latin-1 etiquetado como
+UTF-8, y así quedó escrito en el contrato de datos y en el `CLAUDE.md`.
+
+**Hallazgo al implementar.** Es falso. Los bytes reales son `b'CatÃ¡logo'`, UTF-8
+correcto para «Catálogo». Los ocho archivos del ZIP y la respuesta JSON de la API decodifican
+en UTF-8 estricto sin error. El símbolo de sustitución que se observaba venía de la consola de
+Windows al imprimir, no de los datos.
+
+**Decisión.** `codificacion.py` no repara: valida en UTF-8 estricto, detecta doble codificación
+(`Ã¡`, `Ã³`, `Â`) y **detiene la ingesta** si algo de eso aparece.
+
+**Consecuencias.** Se evita corromper datos correctos: la «reparación» documentada habría
+convertido `Catálogo` en `CatÃ¡logo` en los 2,77 M de registros. Queda como recordatorio de
+que una observación hecha a través de una capa de presentación no es una observación sobre los
+datos.

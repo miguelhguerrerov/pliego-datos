@@ -1,0 +1,48 @@
+name: ingesta diaria
+
+# Mes en curso y anterior: ahi nacen los estados planning y tender, que son el
+# producto de radar. Son ~3 MB, cuesta segundos.
+# Mantiene ademas activo el proyecto de Supabase, que en plan gratuito se pausa
+# tras una semana de inactividad.
+on:
+  schedule:
+    - cron: "0 9 * * *"      # 09:00 UTC = 04:00 Ecuador
+  workflow_dispatch:
+    inputs:
+      mes:
+        description: "AAAA-MM (vacio = incremental)"
+        required: false
+
+jobs:
+  ingesta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Pruebas de contrato
+        # Si la fuente cambio de esquema, no se carga nada.
+        run: python -m pytest pruebas/ -q
+
+      - name: Ingesta
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -n "${{ inputs.mes }}" ]; then
+            python src/ingesta.py --mes "${{ inputs.mes }}"
+          else
+            python src/ingesta.py --incremental
+          fi
+
+      - name: Informe de cobertura
+        if: always()
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python src/cobertura.py --informe

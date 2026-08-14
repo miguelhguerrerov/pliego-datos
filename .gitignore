@@ -1,0 +1,9 @@
+.cache/
+*.zip
+*.parquet
+.env
+.env.*
+SECRETOS*
+__pycache__/
+*.pyc
+.pytest_cache/
