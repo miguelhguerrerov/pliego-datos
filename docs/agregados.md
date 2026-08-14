@@ -9,6 +9,21 @@ aplicación en cada carga de página?* Si no, va a Parquet.
 
 ## 1. Presupuesto
 
+**Cifras medidas el 14 de agosto de 2026** con los 140 meses cargados, no estimaciones.
+La proyección inicial se quedó corta: ver D-018.
+
+| Tabla | Filas reales | MB reales |
+|---|---|---|
+| `proceso_resumen` | 281 224 | **173,8** |
+| `hecho_mes` | 1 234 552 | **139,9** |
+| `entidad_nombre` | 80 058 | **15,0** |
+| **Base completa tras quitar los índices inútiles** | | **339** |
+
+`proceso_resumen` supera su presupuesto de 140 MB. Si la base se acerca de nuevo al techo,
+la primera válvula —ventana de 24 a 18 meses— libera unos 45 MB.
+
+Proyección original, conservada para comparar:
+
 | Tabla | Grano | Filas | MB |
 |---|---|---|---|
 | `entidad` | RUC | 120 K | 25 |

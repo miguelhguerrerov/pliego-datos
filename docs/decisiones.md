@@ -381,3 +381,37 @@ Lo que falló en mi comprobación: consulté `pg_constraint`, vi que la restricc
 estaba puesta, y di el resto por hecho sin mirar `information_schema.columns.is_nullable`.
 **Verificar el estado que importa, no un estado adyacente.** La comprobación buena fue
 insertar la fila exacta que fallaba y ver que entraba.
+
+---
+
+## D-018 · Los índices de `hecho_mes` costaban el 38% del presupuesto y no servían a nadie
+**2026-08-14**
+
+**Contexto.** Con 137 de 140 meses cargados, la base llegó a **513 MB — por encima del
+techo de 500 del plan gratuito**. El presupuesto proyectado era 460.
+
+**Medición.**
+
+| Tabla | Total | Datos | Índices |
+|---|---|---|---|
+| `hecho_mes` | 313,7 MB | 140,2 | **173,5** |
+| `proceso_resumen` | 173,7 MB | 124,2 | 49,4 |
+| `entidad_nombre` | 15,0 MB | 7,7 | 7,3 |
+
+Los índices de `hecho_mes` pesaban **más que sus propios datos**. La causa: una restricción
+única sobre cinco columnas, una de ellas `metodo`, que es texto largo repetido 1,23 millones
+de veces, más tres índices adicionales.
+
+**Y no los usaba nadie.** `hecho_mes` la escribe la ingesta con `delete` + `copy` por mes,
+y la lee `agrega.py` con un recorrido completo de la tabla. Ningún consumidor filtra por
+esas columnas.
+
+**Decisión.** Eliminar los cuatro. Resultado medido: **513 MB → 339 MB**.
+
+Se pierde la garantía de unicidad, que la ingesta ya asegura por construcción: borra el
+mes antes de insertarlo y deduplica en memoria antes de copiar.
+
+**Consecuencia de método.** Un índice tiene un coste que se paga siempre y un beneficio
+que solo existe si alguien consulta por él. En una tabla de escritura masiva y lectura
+secuencial, todos los índices son puro coste. Conviene preguntarse **qué consulta lo usa**
+antes de crear cada uno — y en este proyecto, además, medir el tamaño después.
