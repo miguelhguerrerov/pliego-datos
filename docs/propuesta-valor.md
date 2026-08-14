@@ -38,8 +38,8 @@ comprado— es literalmente el mecanismo de esa transición.
 Proveedor del Estado que factura entre **100 000 y 2 000 000 USD al año**. Son 6 697 empresas,
 el 31,9% de los proveedores y el 40,2% del monto adjudicado.
 
-Trabaja con entre 6 y 16 entidades: suficientes para entender el juego, pocas para haberlo
-agotado. Repite de un año al otro en un 58–67%. Y **a ese tamaño no hay departamento de
+Trabaja con entre 4 y 10 compradores al año: suficientes para entender el juego, pocos
+para haberlo agotado. Repite de un año al otro en un 58–67%. Y **a ese tamaño no hay departamento de
 licitaciones**: lo lleva el dueño o una persona. Es el punto exacto donde la herramienta
 sustituye trabajo que hoy se hace a mano.
 
