@@ -98,7 +98,9 @@ def a_proceso_resumen(mes: MesNormalizado) -> list[tuple]:
             numero(t.get("value_amount")) or presupuesto.get(ocid),
             awards.get(ocid),
             None,                                   # provincia: solo desde la ruta JSON
-            (t.get("title") or t.get("description") or "")[:200] or None,
+            # description lleva QUE se compra; title es solo el codigo del expediente
+            # (17.473 valores unicos, todos codigos). Ver docs/decisiones.md D-016.
+            (t.get("description") or t.get("title") or "")[:200] or None,
             cierra,
         ))
     return filas

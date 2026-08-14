@@ -303,3 +303,41 @@ las tablas enteras en segundos, sin volver a tocar la fuente.
 `precio_cpc` y `mercado_cpc_prov` no se pueden calcular así: necesitan los ítems, que solo
 vienen por la ruta JSON. Se pueblan desde Parquet cuando esa capa esté publicada. El
 esquema de ambas ya está creado en la migración 0002 para que no falte nada después.
+
+---
+
+## D-016 · El objeto contractual está en `description`, no en `title`
+**2026-08-14**
+
+**Contexto.** Al probar la clasificación por embeddings, la normalización colapsó 17 473
+objetos únicos a 15. Toda la señal desaparecía.
+
+**Dos causas, ambas mías.**
+
+1. **Campo equivocado.** `tender.title` es casi siempre el **código del expediente**
+   —`MCO-GADMAA-2024-001-50459`, `Orden de compra CE-20240002564098`—: 17 473 valores
+   únicos sobre 17 477 procesos, es decir, uno por proceso. `tender.description` es lo
+   que se compra, con 2 786 valores únicos. El normalizador guardaba
+   `title or description`, o sea el código.
+
+2. **Normalización destructiva.** Quitaba «adquisición de», «servicio de», «contratación
+   de» y similares, además de códigos y cifras largas. Sobre títulos que ya eran solo
+   códigos, el resultado era la cadena vacía.
+
+**Decisión.** `proceso_resumen.objeto` se toma de `description`. La normalización solo
+quita el código de expediente y el preámbulo fijo del catálogo electrónico («Orden de
+compra para adquirir los siguientes productos:»); el resto se conserva.
+
+**Consecuencias.** El fallo era grave y silencioso: el índice de texto completo estaba
+construido sobre códigos de expediente, así que **el buscador habría devuelto nada útil**,
+y la clasificación no tenía nada que clasificar. Ninguna prueba lo detectaba porque el
+campo se poblaba correctamente — con el contenido equivocado.
+
+Obliga a rehacer el backfill. Regla que se deriva: **normalizar de menos es más seguro
+que normalizar de más**, y conviene comprobar la cardinalidad antes y después de cualquier
+normalización. 17 473 → 15 debió saltar a la vista de inmediato.
+
+**Pendiente de refinar.** Con pocos grupos aparecen nombres repetidos («Medicamentos» dos
+veces) y etiquetas genéricas de cajón de sastre («Adquisición de suministros»). Al
+construir la taxonomía completa con 400 grupos conviene fusionar por nombre y revisar las
+etiquetas vagas a mano: son pocas y es trabajo de una hora.
