@@ -369,3 +369,15 @@ está escrita, mediante la tabla `entidad_nombre`.
 
 **Consecuencia de método.** Medir antes de rebajar un invariante. El coste que yo suponía
 prohibitivo era el 0,9% del presupuesto.
+
+**Apéndice a D-017 · el `NOT NULL` sobrevive a la clave primaria.**
+La migración 0003 cambió la clave primaria por `unique nulls not distinct`, y el backfill
+**volvió a fallar con el mismo error**. En PostgreSQL, eliminar una clave primaria **no
+elimina el `NOT NULL`** que implicaba: las columnas lo conservan como restricción
+independiente. Hace falta `alter column ... drop not null` explícito, que es lo que hace
+la migración 0004.
+
+Lo que falló en mi comprobación: consulté `pg_constraint`, vi que la restricción única
+estaba puesta, y di el resto por hecho sin mirar `information_schema.columns.is_nullable`.
+**Verificar el estado que importa, no un estado adyacente.** La comprobación buena fue
+insertar la fila exacta que fallaba y ver que entraba.
