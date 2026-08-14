@@ -67,6 +67,18 @@ Resend **pausa el envío en vez de facturar**. Los pendientes quedan en cola y s
 día siguiente. **No se pierden avisos.** Si ocurre dos días seguidos, es momento de Resend Pro
 o de cuenta separada — la cuota está compartida con otros proyectos de Darkmelon.
 
+### `Network is unreachable` al conectar a Postgres
+El host directo `db.<ref>.supabase.co` **solo resuelve a IPv6** y los runners de GitHub
+Actions no tienen IPv6. Usar el agrupador en **modo sesión**:
+
+```
+postgresql://postgres.<ref>:<clave>@aws-0-<region>.pooler.supabase.com:5432/postgres
+```
+
+**Puerto 5432, no 6543.** El 6543 es modo transacción y no soporta `COPY` ni sentencias
+preparadas, que es de lo que depende la carga masiva. `carga.py` valida ambas cosas y
+falla con el mensaje correcto en vez de con un error de red.
+
 ### Base cerca del límite
 Aplicar la primera válvula: ventana de `proceso_resumen` de 24 a 18 meses. Libera ~45 MB y es
 un parámetro, no una migración. Segunda válvula en `agregados.md` §1.

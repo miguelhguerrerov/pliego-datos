@@ -130,3 +130,44 @@ def test_estados_intermedios_estan_presentes(mes_real):
     """Los estados intermedios son el producto de radar, no ruido."""
     estados = {estado_de_tag(r.get("tag")) for r in mes_real.tablas["releases"]}
     assert "cerrado" in estados
+
+
+# --- cadena de conexión ---------------------------------------------------------
+
+def test_rechaza_host_directo_solo_ipv6(monkeypatch):
+    """El host directo de Supabase solo resuelve a IPv6 y los runners de GitHub
+    Actions no lo alcanzan. Ver docs/decisiones.md D-012."""
+    from carga import url_conexion
+
+    monkeypatch.setenv("SUPABASE_DB_URL", "postgresql://postgres:x@db.abc.supabase.co:5432/postgres")
+    with pytest.raises(RuntimeError, match="IPv6"):
+        url_conexion()
+
+
+def test_rechaza_modo_transaccion(monkeypatch):
+    """El puerto 6543 es modo transacción: no soporta COPY, que es de lo que
+    depende la carga masiva."""
+    from carga import url_conexion
+
+    monkeypatch.setenv(
+        "SUPABASE_DB_URL",
+        "postgresql://postgres.abc:x@aws-0-us-east-1.pooler.supabase.com:6543/postgres",
+    )
+    with pytest.raises(RuntimeError, match="6543"):
+        url_conexion()
+
+
+def test_acepta_agrupador_en_modo_sesion(monkeypatch):
+    from carga import url_conexion
+
+    url = "postgresql://postgres.abc:x@aws-0-us-east-1.pooler.supabase.com:5432/postgres"
+    monkeypatch.setenv("SUPABASE_DB_URL", url)
+    assert url_conexion() == url
+
+
+def test_exige_la_variable(monkeypatch):
+    from carga import url_conexion
+
+    monkeypatch.delenv("SUPABASE_DB_URL", raising=False)
+    with pytest.raises(RuntimeError, match="SUPABASE_DB_URL"):
+        url_conexion()

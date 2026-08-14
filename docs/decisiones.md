@@ -201,3 +201,22 @@ Windows al imprimir, no de los datos.
 convertido `Catálogo` en `CatÃ¡logo` en los 2,77 M de registros. Queda como recordatorio de
 que una observación hecha a través de una capa de presentación no es una observación sobre los
 datos.
+
+---
+
+## D-012 · Conexión a Postgres por el agrupador en modo sesión
+**2026-08-14**
+
+**Contexto.** El primer flujo de ingesta en GitHub Actions falló con
+`connection to server at "2600:1f18:...", port 5432 failed: Network is unreachable`.
+
+**Causa.** El host directo `db.<ref>.supabase.co` solo resuelve a IPv6. Los runners de
+GitHub Actions no tienen conectividad IPv6.
+
+**Decisión.** Toda conexión usa el agrupador `aws-0-<region>.pooler.supabase.com` en
+**modo sesión, puerto 5432**. No el 6543: el modo transacción no soporta `COPY` ni
+sentencias preparadas, y la carga masiva depende de `COPY`.
+
+**Consecuencias.** `carga.py` valida la cadena y falla con un mensaje que explica esto,
+en vez de dejar un error de red que parece caída del servicio. El modo sesión limita el
+número de conexiones simultáneas, lo cual es irrelevante aquí: la ingesta usa una sola.
