@@ -223,6 +223,12 @@ JSON de la API decodifican como UTF-8 sin error.
    Si aparecen, detiene la ingesta.
 3. Registra el resultado en `cobertura.nota`.
 
+**Corrupción esporádica dentro del UTF-8 válido.** Hay registros sueltos cargados ya
+corruptos por la entidad de origen: medido, 1 línea de 1070 en `planning_2026_agosto.csv`
+(0,09%). Se reparan por fragmento, se cuentan y se anotan en `cobertura.nota`. Solo si el
+viaje de ida y vuelta es limpio; si no, se deja el original. Por encima del **1% de líneas
+afectadas** se considera cambio de la fuente y la ingesta se detiene. Ver D-013.
+
 Casos de prueba en `pruebas/test_codificacion.py`:
 
 | Entrada | Resultado esperado |

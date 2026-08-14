@@ -65,13 +65,19 @@ class MesNormalizado:
         return len(self.tablas.get("releases", []))
 
 
-def _leer_tabla(zf: zipfile.ZipFile, prefijo: str, anio: int, mes: int) -> list[dict]:
+def _leer_tabla(
+    zf: zipfile.ZipFile, prefijo: str, anio: int, mes: int, avisos: list[str]
+) -> list[dict]:
     nombres = [i.filename for i in zf.infolist() if i.filename.startswith(prefijo + "_")]
     if not nombres:
         return []
     origen = f"{anio}-{mes:02d}/{nombres[0]}"
-    texto = decodificar(zf.read(nombres[0]), origen)
-    lector = csv.DictReader(io.StringIO(texto))
+    validado = decodificar(zf.read(nombres[0]), origen)
+    if validado.hubo_reparaciones:
+        # Suciedad de captura en origen, no cambio de la fuente: se repara, se cuenta
+        # y queda anotado en cobertura. Ver docs/decisiones.md D-013.
+        avisos.append(f"{prefijo}: {validado.reparaciones} fragmentos con doble codificacion reparados")
+    lector = csv.DictReader(io.StringIO(validado.texto))
 
     esperadas = COLUMNAS.get(prefijo)
     if esperadas is not None:
@@ -99,7 +105,7 @@ def normalizar(zf: zipfile.ZipFile, anio: int, mes: int) -> MesNormalizado:
 
     resultado = MesNormalizado(anio, mes)
     for prefijo in COLUMNAS:
-        resultado.tablas[prefijo] = _leer_tabla(zf, prefijo, anio, mes)
+        resultado.tablas[prefijo] = _leer_tabla(zf, prefijo, anio, mes, resultado.avisos)
 
     # Deduplicación por ocid en releases: la identidad del proceso es el ocid.
     releases = resultado.tablas["releases"]

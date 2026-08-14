@@ -220,3 +220,35 @@ sentencias preparadas, y la carga masiva depende de `COPY`.
 **Consecuencias.** `carga.py` valida la cadena y falla con un mensaje que explica esto,
 en vez de dejar un error de red que parece caída del servicio. El modo sesión limita el
 número de conexiones simultáneas, lo cual es irrelevante aquí: la ingesta usa una sola.
+
+---
+
+## D-013 · Corrupción esporádica se repara; sistemática detiene la ingesta
+**2026-08-14**
+
+**Contexto.** Tras aplicar D-011 (la fuente entrega UTF-8 válido, no se repara nada), el
+validador detuvo la ingesta de agosto de 2026 al encontrar doble codificación en
+`planning_2026_agosto.csv`.
+
+**Hallazgo al medirlo.** Era **1 línea de 1070, el 0,09%**: una entidad cargó
+«georreferenciación» desde un sistema que lo manglió. Suciedad normal de captura, no un
+cambio de la fuente.
+
+**Decisión.** El validador distingue dos casos por umbral del 1% de líneas afectadas:
+
+- **Sistemática** (por encima): la fuente cambió. Se detiene la ingesta.
+- **Esporádica** (por debajo): se repara el fragmento concreto, se cuenta y se anota en
+  `cobertura.nota`. La ingesta continúa.
+
+La reparación solo se aplica si el viaje de ida y vuelta —`latin-1` a `utf-8`— es limpio.
+Si no lo es, se deja el original: más vale un campo feo que uno inventado.
+
+**Consecuencias.** Detener 2,77 M de registros porque un organismo tecleó mal un campo
+sería desproporcionado; cargar mojibake sin contarlo sería deshonesto. El umbral separa
+las dos cosas y el conteo queda visible en el registro de cobertura.
+
+**Nota de método.** El patrón de detección se **construye con `chr()`**, no se escribe
+como literal ni como escape. Al crear estos archivos, las herramientas de edición
+normalizaron los literales tres veces seguidas, y en una de ellas el detector pasó a
+marcar como corrupto cualquier texto en español bien escrito. Lo mismo aplica a las
+cadenas de prueba: se construyen con `encode`/`decode`, nunca se escriben.
