@@ -108,3 +108,41 @@ def test_relacion_alimenta_compradores_huerfanos():
     assert r[("C1", "P1")][3] == 800
     assert r[("C1", "P1")][4] == 3
     assert ("C2", "P1") in r
+
+
+# --- tabla entidad --------------------------------------------------------------
+
+def test_nombre_canonico_por_moda_no_por_el_ultimo():
+    """Los registros antiguos tienen mas erratas: el mas frecuente es mejor criterio.
+    Ver docs/decisiones.md D-017."""
+    from agrega import construir_entidad
+
+    entidad_ano = [("1791240502001", 2024, "proveedor", 250000, 5, 3)]
+    nombres = [
+        ("1791240502001", "CEDIMED CIA LTDA", 2),
+        ("1791240502001", "CEDIMED CIA. LTDA.", 9),
+    ]
+    fila = construir_entidad(entidad_ano, nombres)[0]
+    assert fila[1] == "CEDIMED CIA. LTDA."
+
+
+def test_entidad_marca_persona_natural_para_enmascarar():
+    """El RUC de persona natural contiene la cedula: la marca decide el
+    enmascaramiento. Ver docs/legal.md §1."""
+    from agrega import construir_entidad
+
+    filas = {f[0]: f for f in construir_entidad(
+        [("1104567890001", 2024, "proveedor", 50000, 2, 1),
+         ("1791240502001", 2024, "proveedor", 50000, 2, 1)],
+        [])}
+    assert filas["1104567890001"][3] is True    # persona natural
+    assert filas["1791240502001"][3] is False   # sociedad
+
+
+def test_tramo_situa_el_segmento_objetivo():
+    from agrega import tramo_de
+
+    assert tramo_de(3_000) == "<5K"
+    assert tramo_de(250_000) == "100-500K"      # segmento objetivo
+    assert tramo_de(1_500_000) == "500K-2M"     # segmento objetivo
+    assert tramo_de(50_000_000) == ">10M"

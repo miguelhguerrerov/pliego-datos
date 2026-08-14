@@ -118,6 +118,27 @@ COLUMNAS_HECHO = [
 ]
 
 
+def a_entidad_nombre(mes: MesNormalizado) -> list[tuple]:
+    """Cuenta las grafias vistas por RUC en el mes.
+
+    El nombre canonico se resuelve por moda y no por el ultimo visto: los registros
+    antiguos tienen mas erratas. Medido: solo el 1,8% de los RUC tiene mas de una
+    grafia, y la tabla completa pesa unos 4 MB. Ver docs/decisiones.md D-017.
+    """
+    cuenta: dict[tuple, int] = {}
+    for r in mes.tablas["releases"]:
+        ruc = extraer_ruc(r.get("buyer_id"))
+        nombre = (r.get("buyer_name") or "").strip()
+        if ruc and nombre:
+            cuenta[(ruc, nombre[:180])] = cuenta.get((ruc, nombre[:180]), 0) + 1
+    for sup in mes.tablas["suppliers"]:
+        ruc = extraer_ruc(sup.get("id"))
+        nombre = (sup.get("name") or "").strip()
+        if ruc and nombre:
+            cuenta[(ruc, nombre[:180])] = cuenta.get((ruc, nombre[:180]), 0) + 1
+    return [(ruc, nombre, n) for (ruc, nombre), n in cuenta.items()]
+
+
 def a_hecho_mes(filas_resumen: list[tuple], anio: int, mes: int) -> list[tuple]:
     """Colapsa las filas del mes al grano mínimo que alimenta los agregados.
 
@@ -180,6 +201,7 @@ def procesar_mes(anio: int, mes: int, con, seco: bool, forzar: bool) -> str:
 
     from carga import copiar, upsert_cobertura
     hechos = a_hecho_mes(filas, anio, mes)
+    nombres = a_entidad_nombre(normalizado)
     with con.cursor() as cur:
         # proceso_resumen: solo la ventana del radar. Los meses viejos se descartan.
         cur.execute("delete from proceso_resumen where anio=%s and mes=%s", (anio, mes))
@@ -187,6 +209,13 @@ def procesar_mes(anio: int, mes: int, con, seco: bool, forzar: bool) -> str:
     if _dentro_de_ventana(anio, mes):
         copiar(con, "proceso_resumen", COLUMNAS_RESUMEN, filas)
     copiar(con, "hecho_mes", COLUMNAS_HECHO, hechos)
+    # Acumula frecuencias: un RUC visto en muchos meses suma en cada uno.
+    with con.cursor() as cur:
+        cur.executemany(
+            "insert into entidad_nombre (ruc, nombre, n) values (%s,%s,%s) "
+            "on conflict (ruc, nombre) do update set n = entidad_nombre.n + excluded.n",
+            nombres,
+        )
     estado = "parcial" if normalizado.avisos else "cargado"
     upsert_cobertura(
         con, anio, mes, estado,

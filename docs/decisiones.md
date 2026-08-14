@@ -341,3 +341,31 @@ normalización. 17 473 → 15 debió saltar a la vista de inmediato.
 veces) y etiquetas genéricas de cajón de sastre («Adquisición de suministros»). Al
 construir la taxonomía completa con 400 grupos conviene fusionar por nombre y revisar las
 etiquetas vagas a mano: son pocas y es trabajo de una hora.
+
+---
+
+## D-017 · Clave de `hecho_mes` con nulos, y nombre canónico por moda
+**2026-08-14**
+
+**Contexto.** El backfill corregido falló en el primer mes con
+`NotNullViolation: null value in column "proveedor_ruc"`.
+
+**Causa.** `hecho_mes` tenía clave primaria sobre
+`(anio, mes, comprador_ruc, proveedor_ruc, metodo)`, y **las columnas de una clave
+primaria son implícitamente `NOT NULL`**. Muchos procesos no tienen proveedor: los que
+están en sola planificación son el 68% de un mes en curso. La clave estaba mal elegida.
+
+**Decisión.** `unique ... nulls not distinct` en lugar de clave primaria. PostgreSQL 17
+—el que corre Supabase— trata los nulos como iguales a efectos de unicidad, así que se
+conserva la garantía sin inventar valores de relleno. Rellenar con cadena vacía habría
+ensuciado los `join` contra `entidad`.
+
+**Y de paso, el nombre canónico.** El contrato de datos dice que la grafía se resuelve
+por moda y no por el último visto, porque los registros antiguos tienen más erratas.
+Estuve a punto de rebajar la regla a «gana el más reciente» por ahorrar espacio.
+Antes de hacerlo lo medí: **solo el 1,8% de los RUC tiene más de una grafía**, y guardar
+todas las variantes con su frecuencia ocupa unos **4 MB**. La regla se cumple tal como
+está escrita, mediante la tabla `entidad_nombre`.
+
+**Consecuencia de método.** Medir antes de rebajar un invariante. El coste que yo suponía
+prohibitivo era el 0,9% del presupuesto.

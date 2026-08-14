@@ -109,6 +109,65 @@ def calcular(hechos: list[tuple]) -> dict[str, list[tuple]]:
     return salida
 
 
+TRAMOS = (
+    ("<5K", 0, 5_000), ("5-25K", 5_000, 25_000), ("25-100K", 25_000, 100_000),
+    ("100-500K", 100_000, 500_000), ("500K-2M", 500_000, 2_000_000),
+    ("2-10M", 2_000_000, 10_000_000), (">10M", 10_000_000, float("inf")),
+)
+
+
+def tramo_de(monto: float) -> str:
+    """El tramo del ultimo anio con actividad. El segmento objetivo es 100K-2M:
+    6.697 empresas, el 40,2% del monto. Ver docs/decisiones.md D-004."""
+    for etiqueta, bajo, alto in TRAMOS:
+        if bajo <= monto < alto:
+            return etiqueta
+    return ">10M"
+
+
+def construir_entidad(entidad_ano: list[tuple], nombres: list[tuple]) -> list[tuple]:
+    """Arma la tabla entidad a partir de los agregados y las grafias vistas.
+
+    - nombre por MODA, no por el ultimo visto (los registros antiguos tienen mas erratas)
+    - tipo segun aparezca como comprador, proveedor o ambos
+    - persona natural y provincia derivados del propio RUC
+    - tramo calculado sobre el ultimo anio con actividad
+    """
+    from entidades import es_entidad_publica, es_persona_natural, provincia_de_ruc
+
+    mejor: dict[str, tuple[int, str]] = {}
+    for ruc, nombre, n in nombres:
+        if ruc not in mejor or n > mejor[ruc][0]:
+            mejor[ruc] = (n, nombre)
+
+    roles: dict[str, set] = {}
+    ultimo: dict[str, tuple[int, float]] = {}
+    anios: dict[str, list] = {}
+    for ruc, anio, rol, monto, _n, _c in entidad_ano:
+        roles.setdefault(ruc, set()).add(rol)
+        anios.setdefault(ruc, []).append(anio)
+        if rol == "proveedor" and (ruc not in ultimo or anio > ultimo[ruc][0]):
+            ultimo[ruc] = (anio, float(monto))
+
+    filas = []
+    for ruc, rs in roles.items():
+        tipo = "ambos" if len(rs) > 1 else next(iter(rs))
+        monto = ultimo.get(ruc, (0, 0.0))[1]
+        filas.append((
+            ruc,
+            mejor.get(ruc, (0, ruc))[1],
+            tipo,
+            es_persona_natural(ruc),
+            es_entidad_publica(ruc),
+            provincia_de_ruc(ruc),
+            None,
+            tramo_de(monto) if tipo in ("proveedor", "ambos") else None,
+            None,
+            None,
+        ))
+    return filas
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Recalcula las tablas agregadas")
     p.add_argument("--seco", action="store_true", help="calcula y muestra, sin escribir")
@@ -126,7 +185,13 @@ def main() -> int:
             hechos = cur.fetchall()
         print(f"hechos leídos: {len(hechos):,}")
 
+        with con.cursor() as cur:
+            cur.execute("select ruc, nombre, n from entidad_nombre")
+            nombres = cur.fetchall()
+        print(f"grafias de entidad: {len(nombres):,}")
+
         tablas = calcular(hechos)
+        tablas["entidad"] = construir_entidad(tablas["entidad_ano"], nombres)
         corte = corte_estadistico()
         print(f"corte estadístico: hasta {corte[0]}-{corte[1]:02d} "
               f"(se excluyen los últimos {MESES_SIN_CERRAR} meses)")
@@ -142,7 +207,10 @@ def main() -> int:
             "entidad_ano": ["ruc", "anio", "rol", "monto", "n_procesos", "n_contrapartes"],
             "relacion": ["comprador_ruc", "proveedor_ruc", "anio", "monto", "n_procesos"],
             "baja_metodo": ["metodo", "anio", "n", "ratio_mediana", "ratio_p25", "ratio_p75"],
+            "entidad": ["ruc", "nombre", "tipo", "es_persona_natural", "es_publica",
+                        "provincia", "canton", "tramo", "activa_desde", "activa_hasta"],
         }
+        # entidad primero: las demas no la referencian, pero el orden hace el log legible.
         for nombre, filas in tablas.items():
             reemplazar(con, nombre, columnas[nombre], filas)
         con.commit()
