@@ -276,3 +276,30 @@ oportunidades sin la cifra que las hace accionables.
 pasan, la base se llena, y el producto queda inservible en silencio. Solo apareció al
 mirar los datos cargados con la consulta que haría un usuario. Conviene añadir esa
 comprobación a `test_agregados.py` cuando exista.
+
+---
+
+## D-015 · `hecho_mes`: el grano mínimo que reconcilia 24 meses con once años
+**2026-08-14**
+
+**Contexto.** `proceso_resumen` guarda una ventana de 24 meses porque es la que alimenta
+el radar y el buscador, y guardar once años con objeto contractual reventaría el
+presupuesto de 500 MB. Pero los agregados de proveedor —facturación por año, número de
+compradores distintos, ratio de baja— necesitan **la serie completa**. No pueden salir de
+la misma tabla.
+
+**Opciones.** (a) Ampliar `proceso_resumen` a once años: rompe el presupuesto.
+(b) Recalcular los agregados leyendo los 140 ZIP en cada ejecución: una hora cada noche.
+(c) Una tabla de hechos al grano mínimo que alimenta agregados.
+
+**Decisión.** (c). `hecho_mes` guarda `(anio, mes, comprador, proveedor, metodo)` con
+número de procesos, referencial y adjudicado sumados. **Sin `ocid` ni objeto contractual**,
+que es lo que pesa y lo que vive en Parquet.
+
+**Consecuencias.** La ingesta escribe en las dos tablas: `proceso_resumen` solo si el mes
+está dentro de la ventana, `hecho_mes` siempre. `agrega.py` lee de `hecho_mes` y recalcula
+las tablas enteras en segundos, sin volver a tocar la fuente.
+
+`precio_cpc` y `mercado_cpc_prov` no se pueden calcular así: necesitan los ítems, que solo
+vienen por la ruta JSON. Se pueblan desde Parquet cuando esa capa esté publicada. El
+esquema de ambas ya está creado en la migración 0002 para que no falte nada después.

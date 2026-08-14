@@ -110,6 +110,42 @@ COLUMNAS_RESUMEN = [
     "objeto", "cierra",
 ]
 
+COLUMNAS_HECHO = [
+    "anio", "mes", "comprador_ruc", "proveedor_ruc", "metodo",
+    "n_procesos", "referencial", "adjudicado",
+]
+
+
+def a_hecho_mes(filas_resumen: list[tuple], anio: int, mes: int) -> list[tuple]:
+    """Colapsa las filas del mes al grano mínimo que alimenta los agregados.
+
+    Existe porque `proceso_resumen` solo guarda 24 meses —es la ventana del radar— y
+    los agregados de proveedor necesitan los once años. Guardar el detalle completo
+    de once años en Postgres rompería el presupuesto de 500 MB.
+    Ver docs/decisiones.md D-015.
+
+    Sin ocid ni objeto: eso vive en Parquet.
+    """
+    cubos: dict[tuple, list] = {}
+    for f in filas_resumen:
+        clave = (anio, mes, f[8] or "", f[9] or "", f[5] or "")
+        cubo = cubos.setdefault(clave, [0, 0.0, 0.0])
+        cubo[0] += 1
+        cubo[1] += float(f[10] or 0)
+        cubo[2] += float(f[11] or 0)
+    return [
+        (a, m, c or None, p or None, met or None, n, round(ref, 2), round(adj, 2))
+        for (a, m, c, p, met), (n, ref, adj) in cubos.items()
+    ]
+
+
+def _dentro_de_ventana(anio: int, mes: int, hoy: dt.date | None = None) -> bool:
+    """proceso_resumen guarda solo la ventana del radar. Cargar los once años ahí
+    reventaría el presupuesto de 500 MB: los meses viejos van a hecho_mes y a Parquet."""
+    hoy = hoy or dt.date.today()
+    antiguedad = (hoy.year - anio) * 12 + (hoy.month - mes)
+    return 0 <= antiguedad < VENTANA_RESUMEN_MESES
+
 
 def pct_cerrado(mes: MesNormalizado) -> float:
     total = mes.n_releases or 1
@@ -141,9 +177,14 @@ def procesar_mes(anio: int, mes: int, con, seco: bool, forzar: bool) -> str:
         return "cargado"
 
     from carga import copiar, upsert_cobertura
+    hechos = a_hecho_mes(filas, anio, mes)
     with con.cursor() as cur:
+        # proceso_resumen: solo la ventana del radar. Los meses viejos se descartan.
         cur.execute("delete from proceso_resumen where anio=%s and mes=%s", (anio, mes))
-    copiar(con, "proceso_resumen", COLUMNAS_RESUMEN, filas)
+        cur.execute("delete from hecho_mes where anio=%s and mes=%s", (anio, mes))
+    if _dentro_de_ventana(anio, mes):
+        copiar(con, "proceso_resumen", COLUMNAS_RESUMEN, filas)
+    copiar(con, "hecho_mes", COLUMNAS_HECHO, hechos)
     estado = "parcial" if normalizado.avisos else "cargado"
     upsert_cobertura(
         con, anio, mes, estado,

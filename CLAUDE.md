@@ -271,8 +271,34 @@ jornada.
 
 ---
 
-## 10. Siguiente paso
+## 10. Estado de la fase 1
 
-Fase 1: crear los dos repositorios y el proyecto de Supabase en `us-east-1`, aplicar
-`migraciones/0001_esquema.sql`, y montar la ingesta. El orden y el detalle están en
-`arquitectura.md` y `repositorio.md`.
+**Hecho y verificado en produccion:**
+- Repositorios `pliego-datos` (publico) y `pliego-app` (privado, vacio).
+- Proyecto Supabase `pliego`, ref `ioxnmaxwbcnfomuenyrq`, region us-east-1.
+  Migracion 0001 aplicada.
+- Ingesta CSV completa: descarga con reintentos, validacion de contrato, normalizacion,
+  carga por COPY. Verificada en Actions sobre 2026-08.
+- Ruta JSON (`detalle.py`) y publicacion en Parquet (`publicar.py`). Extraccion
+  verificada contra datos reales; la escritura de Parquet se comprueba en Actions
+  porque pyarrow no tiene ruedas para Windows ARM64.
+- Agregados: migracion 0002 y `agrega.py`.
+- 36 pruebas.
+
+**En curso:** backfill de los 140 meses (2015-01 a 2026-08).
+
+**Pendiente de la fase 1:**
+1. Aplicar la migracion 0002 y correr `agrega.py` cuando termine el backfill.
+2. Publicar el Parquet del historico (`publicar-parquet.yml`).
+3. `clasifica.py`: embeddings de DeepInfra + agrupamiento. Desbloquea el benchmark.
+4. Poblar `precio_cpc` y `mercado_cpc_prov` desde los Parquet.
+
+**Trampas del entorno local**, para no redescubrirlas:
+- Windows ARM64 no tiene ruedas de `psycopg` ni `pyarrow`. El destino es Actions sobre
+  Linux x86-64. Por eso `ingesta.py --seco` no importa `carga.py`.
+- `git push` por HTTPS falla con «Connection was reset»; funciona con
+  `-c http.version=HTTP/1.1`.
+- La consola de Windows mutila el texto acentuado. **Nunca diagnosticar codificacion
+  mirando la pantalla**: usar `repr()` o `ord()`. Ese error ya costo dos iteraciones.
+- No escribir literales acentuados en codigo de deteccion de mojibake: las herramientas
+  de edicion los normalizan. Construirlos con `chr()` o `encode`/`decode`.
