@@ -245,10 +245,19 @@ def resolver_nombres(descripciones: dict[str, Counter], bautizador=bautizar) -> 
     mismo rótulo, que es justo el defecto que este módulo existe para eliminar. Cuando
     pasa, se desambigua con el código, que es lo único que de verdad las distingue.
     """
+    orden = sorted(descripciones, key=lambda g: -sum(descripciones[g].values()))
+
+    # En paralelo: son ~350 llamadas independientes y en serie tardaban 35 minutos, que
+    # es tiempo en el que algo se cae y hay que repetirlo entero. El orden del resultado
+    # se conserva para que la desambiguacion sea determinista.
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        propuestos = list(pool.map(lambda g: bautizador(g, descripciones[g]), orden))
+
     nombres: dict[str, str] = {}
     vistos: dict[str, str] = {}
-    for grupo in sorted(descripciones, key=lambda g: -sum(descripciones[g].values())):
-        nombre = bautizador(grupo, descripciones[grupo])
+    for grupo, nombre in zip(orden, propuestos):
         clave = _clave_normalizada(nombre)
         if clave in vistos:
             nombre = f"{nombre} ({grupo})"
