@@ -277,55 +277,57 @@ correspondiente**, no después.
 
 ## 9. Estado actual — 15 de agosto de 2026
 
-**La fase 1 esta terminada y corriendo sola.** Los flujos programados se disparan sin
-intervencion: ingesta a las 09:30 UTC y agregados a las 09:48, ambos verdes.
+**Fase 1 cerrada. Fase 2 en curso: la aplicacion.**
 
 | Pieza | Estado |
 |---|---|
-| Repositorios | `pliego-datos` publico con el pipeline; `pliego-app` privado y **vacio** |
-| Supabase | Proyecto `pliego`, ref `ioxnmaxwbcnfomuenyrq`, us-east-1. Migraciones 0001-0006 aplicadas |
 | Historico | **140 de 140 meses.** 2.774.263 procesos frente a 2.774.265 de la API |
 | Agregados | 77.693 entidades · 264.276 entidad_ano · 168.151 relaciones · 256 baja_metodo |
-| Taxonomia | 400 categorias, 262.244 procesos clasificados |
-| Parquet | Solo 2026-07 y 2026-08 publicados. **138 meses pendientes** |
+| Taxonomia | 242 categorias tras fusionar · 262.244 procesos clasificados |
+| Migraciones | 0001-0010 aplicadas. `migrar.yml` las aplica desde Actions |
+| Parquet | **Republicandose los 140 meses** con esquema declarado (D-028), 4 tandas |
 | Espacio | 379 MB de 460 presupuestados |
-| Pruebas | 36, verdes |
+| Pruebas | 53 verdes |
+| Aplicacion | Next.js 16.3.1 en Vercel, proyecto `pliego`. Portada, radar y ficha de proveedor |
 
-**Servicios:** GitHub listo (**el token caduca el 13 de septiembre de 2026**); Vercel Hobby
-sin usar todavia; Resend con `darkmelon.com` verificado pero **sin DMARC**; DeepInfra
-verificado y en uso.
+**Flujos programados, corriendo solos:** ingesta 09:30 UTC, agregados 09:48. Verdes.
+
+**Servicios:** GitHub listo (**el token caduca el 13 de septiembre de 2026**); Vercel
+Hobby con `pliego` desplegado; Resend con `darkmelon.com` verificado pero **sin DMARC**;
+DeepInfra verificado y en uso.
 
 **Pendientes con fecha:** registrar `pliego.ec` (35 USD/año); rotar las siete credenciales
-que pasaron por chat antes del primer despliegue; publicar DMARC antes del primer envio
-masivo; renovar el token de GitHub antes del 13 de septiembre o los flujos dejaran de
-correr en silencio.
+que pasaron por chat antes de cobrar; publicar DMARC antes del primer envio masivo;
+renovar el token de GitHub antes del 13 de septiembre o los flujos dejaran de correr en
+silencio.
 
 ---
 
 ## 10. Que falta
 
-**Para cerrar la fase 1:**
-1. **Fusionar las categorias duplicadas.** 400 grupos dan solo ~257 nombres distintos;
-   «Material de oficina» esta partido en siete. El paso existe (`--fusionar`) y esta en el
-   flujo, pero **no se ha ejecutado nunca**. Ver D-021.
-2. **Publicar el Parquet del historico.** Van 2 meses de 140. Cada mes tarda ~20 min por
-   la ruta JSON, asi que hay que ir **por años**, empezando por 2024-2026: el benchmark
-   usa una ventana de 24 meses, no once años.
-3. **Poblar `precio_cpc` y `mercado_cpc_prov`** desde los Parquet. Es lo ultimo que falta
-   para el benchmark, que es la funcion que se cobra.
+**Fase 2, la aplicacion:**
+1. **Ficha 360 de entidad compradora** — el espejo de la de proveedor. Misma estructura,
+   sin muro: quien compra no paga, atrae.
+2. **Buscador** — sobre `objeto_ts`, que ya tiene indice GIN. Es la puerta de entrada
+   desde buscadores externos.
+3. **Mercado por categoria** — precio, quien gana, quien compra. Es la antesala del
+   benchmark.
+4. **Entrar / perfil** — enlace magico, y el muro pasa a ser real. Hasta que exista,
+   `Muro.tsx` lleva a una ruta que no esta.
 
-**Fase 2:** la aplicacion. `pliego-app` esta vacio. Todo lo que necesita —radar, fichas,
-buscador, compradores huerfanos— ya esta en Postgres.
+**Lo ultimo para que el benchmark exista:** poblar `precio_cpc` y `mercado_cpc_prov`
+desde los Parquet, cuando termine la republicacion. `precios.py` ya esta escrito.
 
 **Trampas del entorno local**, para no redescubrirlas:
 - Windows ARM64 no tiene ruedas de `psycopg` ni `pyarrow`. El destino es Actions sobre
-  Linux x86-64. Por eso `ingesta.py --seco` no importa `carga.py`.
-- `git push` por HTTPS falla con «Connection was reset»; funciona con
-  `-c http.version=HTTP/1.1`.
+  Linux x86-64. Por eso `ingesta.py --seco` no importa `carga.py`, y por eso el esquema
+  del Parquet se declara en texto y no con tipos de pyarrow (D-028).
+- `git push` **se queda colgado sin decir nada** cuando el gestor de credenciales de
+  Windows no responde. Con la URL y el token explicitos sube en segundos. El
+  `-c http.version=HTTP/1.1` sigue haciendo falta por el «Connection was reset».
 - La consola de Windows mutila el texto acentuado. **Nunca diagnosticar codificacion
   mirando la pantalla**: usar `repr()` o `ord()`.
 - No escribir literales acentuados en codigo de deteccion de mojibake: las herramientas
   de edicion los normalizan. Construirlos con `chr()`.
-- **Sustituir texto por programa falla en silencio si no encuentra la cadena.** Paso tres
-  veces en una sesion, una de ellas dejo la taxonomia sin escribir. Usar la herramienta de
-  edicion, que si falla, o verificar con `assert` despues.
+- **Sustituir texto por programa falla en silencio si no encuentra la cadena.** Usar la
+  herramienta de edicion, que si falla, o verificar con `assert` despues.

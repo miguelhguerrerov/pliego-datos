@@ -41,8 +41,11 @@ jobs:
           fi
           echo "Se aplicara $ruta ($(wc -l < "$ruta") lineas)"
 
-      - name: Instalar cliente de Postgres
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+      - name: Comprobar el cliente de Postgres
+        # El runner de Ubuntu ya trae psql. Instalarlo «por si acaso» colgo el primer
+        # intento doce minutos en un prompt de apt que nadie iba a contestar, y el paso
+        # se quedo en «in_progress» sin decir por que.
+        run: psql --version
 
       - name: Aplicar
         # El agrupador, no el host directo: db.<ref>.supabase.co solo resuelve IPv6 y los

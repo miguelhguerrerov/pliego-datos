@@ -710,3 +710,41 @@ Es el mismo principio que D-009 y el invariante 10: **un periodo sin cerrar no s
 estadística**. La regla existía para los meses y no se había aplicado a los años.
 
 Dos pruebas en `pruebas/test_agregados.py` lo fijan, una por cada rama.
+
+## D-028 — El esquema del Parquet se declara, no se infiere
+
+**15 de agosto de 2026.**
+
+`_escribir_parquet` usaba `pa.Table.from_pylist(filas)`, que deduce el tipo de cada
+columna del primer lote de filas. Funcionó en 137 meses y falló en 2023-03:
+
+```
+pyarrow.lib.ArrowTypeError: Expected bytes, got a 'int' object
+```
+
+La fuente entrega `planning.budget.id` como texto casi siempre y como número a veces.
+
+**El fallo visible era el menor de los dos problemas.** El otro no daba error: con el
+tipo inferido, `cpc` podía salir como texto en un mes y como entero en otro. Los 140
+archivos dejarían de ser **un** dataset — leerlos con un comodín falla, o peor, descarta
+columnas en silencio. Eso solo se habría notado al construir el benchmark encima, que es
+la función que se cobra, y para entonces el diagnóstico habría costado un día.
+
+**Decisión.** `ESQUEMAS` en `publicar.py` declara el tipo de cada columna de cada tabla.
+Los valores se convierten antes de escribir; lo que no se puede convertir vale nulo,
+porque perder un campo mal formado es mejor que abortar un mes de 16 000 procesos.
+
+El esquema manda sobre los datos en las dos direcciones:
+
+- Un campo que la fuente deja de enviar sale como **columna de nulos**, no como columna
+  ausente.
+- Un campo que `detalle.py` extrae y `ESQUEMAS` no declara **detiene la publicación**.
+  Al revés se perdería sin ruido, que es exactamente la clase de fallo que este proyecto
+  ya ha pagado cuatro veces (regla 6 de `metodo.md`).
+
+Se declara en texto plano y no con tipos de pyarrow porque el entorno local es Windows
+ARM64, donde no hay ruedas: el módulo tiene que poder importarse sin pyarrow.
+
+**Consecuencia.** Los meses publicados antes de este cambio se escribieron con el
+esquema inferido y no son comparables con los nuevos. Se republican los 140, en cuatro
+tandas paralelas por rango de años: un solo trabajo pasaría del límite de 360 minutos.
