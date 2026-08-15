@@ -225,6 +225,7 @@ def main() -> int:
     p.add_argument("--limite", type=int, default=0, help="solo N objetos (pruebas)")
     p.add_argument("--grupos", type=int, default=N_CATEGORIAS)
     p.add_argument("--salida", default="taxonomia.json")
+    p.add_argument("--reusar", help="aplica una taxonomia ya construida (JSON + asignacion)")
     args = p.parse_args()
 
     if not args.construir:
@@ -247,11 +248,17 @@ def main() -> int:
     )
     print(f"\ntaxonomía de {len(resultado['categorias'])} categorías en {args.salida}")
 
+    # Sin esto la taxonomía existe pero no sirve: hay que escribirla y asignarla.
+    with conexion() as con:
+        n_cat, n_proc = escribir(con, resultado["categorias"], resultado["asignacion"])
+    print(f"escritas {n_cat} categorías · {n_proc:,} procesos clasificados "
+          f"de {len(textos):,}")
+
     frecuentes = Counter(
         resultado["categorias"][g]["nombre"] for g in resultado["asignacion"].values()
     )
-    print("categorías más frecuentes:")
-    for nombre, n in frecuentes.most_common(10):
+    print("\ncategorías más frecuentes:")
+    for nombre, n in frecuentes.most_common(12):
         print(f"  {n:>6,}  {nombre}")
     return 0
 
