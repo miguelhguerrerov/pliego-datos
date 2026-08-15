@@ -172,12 +172,16 @@ def construir_entidad(entidad_ano: list[tuple], nombres: list[tuple]) -> list[tu
         destino = base if anio < anio_en_curso else respaldo
         if ruc not in destino or anio > destino[ruc][0]:
             destino[ruc] = fila
+    # La cohorte de comparacion del buscador y de la ficha: el ultimo anio CERRADO del
+    # conjunto. Quien no llega a el sigue teniendo cifras, pero marcadas como viejas.
+    #
+    # Se calcula ANTES de mezclar `respaldo`. Calcularlo despues lo llevaba al anio en
+    # curso —basta un proveedor que empezara este anio— y entonces nadie era «activo»:
+    # el puesto en el tramo desaparecia de las 6.539 fichas que lo tenian.
+    anio_cohorte = max((b[0] for b in base.values()), default=anio_en_curso - 1)
+
     for ruc, fila in respaldo.items():
         base.setdefault(ruc, fila)     # proveedor nuevo: no hay anio completo todavia
-
-    # La cohorte de comparacion del buscador y de la ficha: el ultimo anio cerrado del
-    # conjunto. Quien no llega a el sigue teniendo cifras, pero marcadas como viejas.
-    anio_cohorte = max((b[0] for b in base.values()), default=anio_en_curso - 1)
 
     filas = []
     for ruc, rs in roles.items():

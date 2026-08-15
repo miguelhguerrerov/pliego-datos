@@ -249,3 +249,30 @@ def test_las_cifras_de_cabecera_salen_del_anio_completo():
     assert float(fila[13]) == 11_104_000  # monto_total: los tres anios
     assert fila[15] == completo - 3    # primer_anio
     assert fila[17] == 3               # anios_activo
+
+
+def test_un_proveedor_nuevo_no_desactiva_a_todos_los_demas():
+    """La cohorte de comparación es el último año CERRADO del conjunto. Si se calcula
+    después de meter a los proveedores que solo tienen el año en curso, basta uno que
+    empezara este año para llevarla a 2026 — y entonces nadie es «activo» y el puesto en
+    el tramo desaparece de las 6.539 fichas que lo tenían.
+
+    Las 53 pruebas pasaron con el defecto dentro: ninguna tenía dos proveedores."""
+    import datetime as dt
+
+    from agrega import construir_entidad
+
+    en_curso = dt.date.today().year
+    filas = {f[0]: f for f in construir_entidad([
+        ("0991284214001", en_curso - 1, "proveedor", 20_000_000, 72, 50),
+        ("0999999999001", en_curso,     "proveedor",    150_000,  4,  2),   # entró este año
+    ], [])}
+
+    assert filas["0991284214001"][12] is True, (
+        "un proveedor que empezó este año movió la cohorte al año en curso y dejó "
+        "inactivo a quien sí facturó el último año completo"
+    )
+    assert filas["0999999999001"][12] is False, (
+        "el proveedor nuevo no tiene año completo: no puede contar como activo en la "
+        "cohorte del último año cerrado"
+    )
