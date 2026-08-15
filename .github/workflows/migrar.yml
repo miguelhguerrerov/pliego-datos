@@ -21,6 +21,11 @@ on:
         description: "Migracion a aplicar, p.ej. 0010_vista_proveedor.sql"
         required: true
         type: string
+      recalcular:
+        description: "Recalcular agregados tras aplicar (si la migracion cambia columnas de agregados)"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   aplicar:
@@ -55,11 +60,25 @@ jobs:
         run: |
           psql "$PGURL" -v ON_ERROR_STOP=1 -f "migraciones/${{ inputs.archivo }}"
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Recalcular agregados
+        # Una migracion que anade columnas a una tabla de agregados la deja con esas
+        # columnas en nulo hasta la siguiente pasada. Sin este paso, las consultas de
+        # producto de abajo fallan por una razon que no es un defecto — y una alarma que
+        # salta sin motivo entrena a ignorarla (regla 5 de docs/metodo.md).
+        if: ${{ inputs.recalcular }}
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python src/agrega.py
+
       - name: Consultas de producto
         # Una migracion que crea vistas y no rompe nada sigue pudiendo devolver cero
         # filas. Ver docs/metodo.md regla 1.
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-        run: |
-          pip install -r requirements.txt
-          python -m pytest pruebas/test_producto.py -q
+        run: python -m pytest pruebas/test_producto.py -q
