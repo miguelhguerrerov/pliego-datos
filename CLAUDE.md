@@ -284,11 +284,11 @@ correspondiente**, no después.
 | Historico | **140 de 140 meses.** 2.774.263 procesos frente a 2.774.265 de la API |
 | Agregados | 77.693 entidades · 264.276 entidad_ano · 168.151 relaciones · 256 baja_metodo |
 | Taxonomia | 242 categorias tras fusionar · 262.244 procesos clasificados |
-| Migraciones | 0001-0010 aplicadas. `migrar.yml` las aplica desde Actions |
+| Migraciones | 0001-0013 aplicadas. `migrar.yml` las aplica desde Actions, con `recalcular` |
 | Parquet | **Republicandose los 140 meses** con esquema declarado (D-028), 4 tandas |
 | Espacio | 379 MB de 460 presupuestados |
-| Pruebas | 53 verdes |
-| Aplicacion | Next.js 16.3.1 en Vercel, proyecto `pliego`. Portada, radar y ficha de proveedor |
+| Pruebas | 56 verdes |
+| Aplicacion | Next.js 16.3.1 en Vercel. Portada, radar, buscador, ficha de proveedor y ficha de entidad |
 
 **Flujos programados, corriendo solos:** ingesta 09:30 UTC, agregados 09:48. Verdes.
 
@@ -305,15 +305,16 @@ silencio.
 
 ## 10. Que falta
 
-**Fase 2, la aplicacion:**
-1. **Ficha 360 de entidad compradora** — el espejo de la de proveedor. Misma estructura,
-   sin muro: quien compra no paga, atrae.
-2. **Buscador** — sobre `objeto_ts`, que ya tiene indice GIN. Es la puerta de entrada
-   desde buscadores externos.
-3. **Mercado por categoria** — precio, quien gana, quien compra. Es la antesala del
-   benchmark.
-4. **Entrar / perfil** — enlace magico, y el muro pasa a ser real. Hasta que exista,
-   `Muro.tsx` lleva a una ruta que no esta.
+**Fase 2, la aplicacion.** Hechas: buscador, ficha de proveedor, ficha de entidad.
+Faltan:
+1. **Mercado por categoria** — precio, quien gana, quien compra. Es la antesala del
+   benchmark, y donde deberian caer los enlaces de categoria del buscador. Vuelve a la
+   barra de navegacion cuando exista.
+2. **Entrar / perfil** — enlace magico, y el muro pasa a ser real. Hasta que exista,
+   `Muro.tsx` lleva a una ruta que no esta. Los compradores huerfanos YA estan
+   calculados: solo falta quien puede verlos.
+3. **Fusionar mas categorias.** El umbral de 0,92 se quedo corto: «Equipo de maquinaria»,
+   «Maquinaria pesada» y «Equipo y Maquinaria» siguen siendo tres. Ver D-021.
 
 **Lo ultimo para que el benchmark exista:** poblar `precio_cpc` y `mercado_cpc_prov`
 desde los Parquet, cuando termine la republicacion. `precios.py` ya esta escrito.
@@ -331,3 +332,6 @@ desde los Parquet, cuando termine la republicacion. `precios.py` ya esta escrito
   de edicion los normalizan. Construirlos con `chr()`.
 - **Sustituir texto por programa falla en silencio si no encuentra la cadena.** Usar la
   herramienta de edicion, que si falla, o verificar con `assert` despues.
+- **PostgREST y el indice de texto completo:** un filtro sobre `objeto` se traduce a
+  `to_tsvector(objeto)`, que NO usa el GIN de la columna generada `objeto_ts`. 3,2 s
+  contra 0,23 s. Consultar siempre `objeto_ts=wfts(spanish).<texto>`.
