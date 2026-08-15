@@ -53,11 +53,20 @@ def a_proceso_resumen(mes: MesNormalizado) -> list[tuple]:
     # Los procesos en estado planning NO tienen fila en tender: su presupuesto vive en
     # planning.budget_amount. Sin esto el radar muestra oportunidades sin monto, que es
     # justo la cifra que las hace accionables. Ver docs/decisiones.md D-014.
+    #
+    # Y tampoco tienen `description`: el objeto de un proceso en planificacion vive en
+    # `planning.rationale`, poblado al 100%. Sin esto, los 13.176 procesos en
+    # planificacion —el 87% del radar— salian con un guion donde va lo que se compra.
+    # Ver docs/decisiones.md D-031.
     presupuesto = {}
+    razon = {}
     for pl in mes.tablas["planning"]:
         v = numero(pl.get("budget_amount"))
         if v is not None:
             presupuesto.setdefault(pl["ocid"], v)
+        r_txt = (pl.get("rationale") or "").strip()
+        if r_txt:
+            razon.setdefault(pl["ocid"], r_txt)
     awards: dict[str, float] = {}
     for a in mes.tablas["awards"]:
         v = numero(a.get("amount"))
@@ -100,7 +109,11 @@ def a_proceso_resumen(mes: MesNormalizado) -> list[tuple]:
             None,                                   # provincia: solo desde la ruta JSON
             # description lleva QUE se compra; title es solo el codigo del expediente
             # (17.473 valores unicos, todos codigos). Ver docs/decisiones.md D-016.
-            (t.get("description") or t.get("title") or "")[:200] or None,
+            #
+            # `rationale` ANTES que `title`: en planificacion no hay tender, y rationale
+            # es el objeto de verdad. Dejar que gane title devolveria el codigo del
+            # expediente, que es el mismo fallo de D-016 por otra puerta.
+            (t.get("description") or razon.get(ocid) or t.get("title") or "")[:200] or None,
             cierra,
         ))
     return filas

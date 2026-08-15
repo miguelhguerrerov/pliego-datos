@@ -873,3 +873,44 @@ El proyecto gastó embeddings, agrupamiento, un modelo de 70 B y dos rondas de f
 reconstruir peor una clasificación que la fuente entregaba gratis y completa en cada
 registro. La pregunta «¿ya viene esto en el dato?» tenía que haber ido antes que
 «¿cómo lo calculo?».
+
+## D-031 — El objeto de un proceso en planificación vive en `planning.rationale`
+
+**15 de agosto de 2026.**
+
+En el radar y en las fichas, la mayoría de las oportunidades salían con un guion donde
+debe decir qué se compra. Medido:
+
+| Estado | Sin objeto |
+|---|---|
+| **planificación** | **13 176 de 13 176 — el 100%** |
+| abierto | 0 de 2 018 |
+| cerrado | 0 de 263 493 |
+
+No es aleatorio: es estructural, y **no es un problema de la fuente**. Un proceso en
+planificación todavía no tiene bloque `tender` —no se ha convocado nada—, así que
+`tender.description` no existe. Lo que sí trae es `planning.rationale`, y en el CSV de
+julio de 2026 viene poblado en **4 040 de 4 040 filas**:
+
+```
+rationale = 'CONSULTORÍA PARA EL DISEÑO, DESARROLLO E IMPLEMENTACIÓN DE UN…'
+```
+
+La ingesta solo miraba `tender`. Es la misma familia que D-014, que ya había descubierto
+que el presupuesto de esos procesos vive en `planning.budget_amount`: se arregló el monto
+y no se miró el resto del bloque.
+
+**Decisión.** El objeto se toma de `tender.description`, luego `planning.rationale`, y
+solo después `tender.title`. El orden importa: `title` es el código del expediente
+(D-016), así que dejarlo ganar devolvería códigos y el fallo volvería por otra puerta.
+
+**Lo que enseña.** El radar es la razón para volver cada día, y el 87% de sus filas no
+decía qué se compra. Nada falló: la ingesta terminó en verde, las pruebas pasaron y la
+columna estaba poblada al 95% *sobre el total de la tabla*, porque los 263 493 procesos
+cerrados la tienen. **Una cobertura global sana escondía un agujero del 100% en el
+subconjunto que es el producto.** Las comprobaciones de poblado tienen que ir por estado,
+no sobre el total.
+
+**Lo que sigue sin estar, y es de la fuente:** solo el 44,5% de los procesos en
+planificación declara `budget_amount`. Esa mitad no tiene monto porque la entidad aún no
+lo ha presupuestado, y ahí no hay nada que arreglar — se muestra sin cifra y se dice.

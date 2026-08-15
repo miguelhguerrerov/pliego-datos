@@ -327,3 +327,43 @@ def test_la_ficha_de_comprador_no_expone_personas_naturales(con):
         join entidad e on e.ruc = v.ruc where e.es_persona_natural
     """)
     assert n == 0, f"{n} personas naturales tienen ficha de comprador"
+
+
+# --- D-031: el radar salía sin objeto contractual --------------------------------
+
+def test_los_procesos_en_planificacion_dicen_que_se_compra(con):
+    """13.176 de 13.176 procesos en planificación —el 87% del radar— tenían el objeto
+    vacío. No era la fuente: `planning.rationale` viene poblado al 100%, y la ingesta
+    solo miraba `tender.description`, que en esa fase no existe todavía.
+
+    Una oportunidad sin decir qué se compra no es una oportunidad. Ver D-031."""
+    total = _uno(con, "select count(*) from proceso_resumen where estado='planificacion'")
+    if not total:
+        pytest.skip("sin procesos en planificación")
+    con_objeto = _uno(
+        con,
+        "select count(*) from proceso_resumen "
+        "where estado='planificacion' and objeto is not null and length(objeto) > 5",
+    )
+    assert con_objeto / total > 0.9, (
+        f"solo {con_objeto:,} de {total:,} procesos en planificación dicen qué se "
+        f"compra. El objeto sale de planning.rationale (D-031)."
+    )
+
+
+def test_el_objeto_en_planificacion_no_es_el_codigo_del_expediente(con):
+    """La misma trampa de D-016 por otra puerta: si `title` gana a `rationale`, el radar
+    vuelve a mostrar códigos donde debería decir qué se compra."""
+    parecen_codigo = _uno(
+        con,
+        r"select count(*) from proceso_resumen where estado='planificacion' "
+        r"and objeto is not null and (objeto ~ '^[A-Z0-9]+-[A-Z0-9-]+$' or objeto !~ ' ')",
+    )
+    total = _uno(con, "select count(*) from proceso_resumen "
+                      "where estado='planificacion' and objeto is not null")
+    if not total:
+        pytest.skip("sin objetos en planificación")
+    assert parecen_codigo / total < 0.2, (
+        f"{parecen_codigo:,} de {total:,} objetos en planificación parecen códigos de "
+        f"expediente: `rationale` debe ir antes que `title` (D-031)."
+    )
