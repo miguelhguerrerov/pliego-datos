@@ -32,6 +32,14 @@ jobs:
           DEEPINFRA_API_KEY: ${{ secrets.DEEPINFRA_API_KEY }}
         run: python src/clasifica.py --construir --grupos "${{ inputs.grupos || 400 }}"
 
+      - name: Fusionar categorias duplicadas
+        # 400 grupos dan ~257 nombres distintos: sin esto el benchmark queda
+        # repartido entre variantes de la misma categoria. Ver D-021.
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          DEEPINFRA_API_KEY: ${{ secrets.DEEPINFRA_API_KEY }}
+        run: python src/clasifica.py --fusionar
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
