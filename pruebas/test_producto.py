@@ -251,7 +251,7 @@ def test_la_ficha_de_proveedor_devuelve_datos(con):
         select count(*) from v_proveedor
         where monto_base > 0 and nombre is not null and tramo is not null
     """)
-    assert completas / n > 0.3, (
+    assert completas / n > 0.9, (
         f"solo {completas} de {n} fichas tienen monto, nombre y tramo. "
         f"Una ficha sin cifras no sirve como canal de adquisición."
     )
@@ -283,3 +283,25 @@ def test_los_compradores_huerfanos_no_incluyen_a_los_propios(con):
     assert fila and fila > 1_000, (
         f"solo {fila} proveedores tienen compradores huérfanos; se esperan miles"
     )
+
+
+def test_casi_ninguna_ficha_sale_vacia(con):
+    """Con un único año de referencia para todos, 14.593 de 21.132 fichas —el 69%— salían
+    con guiones en las cuatro cifras de cabecera. No dio ningún error: la vista existía,
+    devolvía 21.132 filas y la migración aplicó en verde.
+
+    Cada proveedor trae ahora su propio último año completo. Ver la 0011."""
+    n = _uno(con, "select count(*) from v_proveedor")
+    vacias = _uno(con, "select count(*) from v_proveedor where monto_base is null")
+    assert vacias / n < 0.05, (
+        f"{vacias:,} de {n:,} fichas ({vacias / n:.0%}) no tienen ni una cifra de "
+        f"cabecera. El año base debe ser el de cada proveedor, no uno global."
+    )
+
+
+def test_solo_los_activos_tienen_puesto(con):
+    """Comparar a una empresa que dejó de contratar en 2019 contra la cohorte de 2025 da
+    un número con aspecto de dato y sin significado."""
+    mal = _uno(con,
+               "select count(*) from v_proveedor where not activo and puesto_tramo is not null")
+    assert mal == 0, f"{mal} fichas inactivas traen puesto en el tramo actual"
