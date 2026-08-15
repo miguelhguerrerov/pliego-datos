@@ -792,3 +792,84 @@ que es lo que ya hacía con `ErrorDescarga` y lo que manda `CLAUDE.md` §4.
 
 Cuatro pruebas nuevas, incluidas las dos direcciones: que un carácter roto en un JSON
 enorme **no** detenga, y que una fuente que cambia de codificación **sí**.
+
+## D-030 — La taxonomía sale del CPC de la fuente, no de agrupar texto
+
+**15 de agosto de 2026.** Sustituye el enfoque de D-021.
+
+### Lo que falló
+
+La taxonomía se construía agrupando embeddings del objeto contractual con k-means y
+pidiendo a un modelo que bautizara cada grupo. D-021 ya detectó que 400 grupos daban 257
+nombres distintos y añadió una fusión por parecido de nombres. **No bastó.** Medido sobre
+las 242 categorías que llegaron a producción:
+
+| Familia | Categorías | Procesos |
+|---|---|---|
+| «oficina» | **12** | 74 209 |
+| «medicamento» | **15** | 24 525 |
+| «impresora» | 10 | 13 361 |
+| «limpieza» | 5 | 36 832 |
+
+Más duplicados que ni siquiera necesitaban un modelo para detectarse: «Equipo médico»,
+«Equipo Médico» y «Equipos médicos» como tres categorías.
+
+Y el que ordena todo lo demás: una categoría con **4 308 procesos** llamada literalmente
+
+> «Medicamento antiviral y antibiótico no, es más genérico: Med»
+
+Es el razonamiento del modelo, cortado a los 60 caracteres del campo, publicado como
+nombre de categoría. **Nadie validaba la salida del modelo.**
+
+### Por qué el parche no podía funcionar
+
+Fusionar por parecido de nombres es un parche sobre un parche. Nada garantizaba que dos
+grupos de la misma cosa recibieran nombres parecidos, porque cada grupo se bautizaba por
+separado y sin vocabulario común. Y bajar el umbral no arregla nada: «Papel de oficina» y
+«Material de oficina» son nombres distintos de cosas que a veces son la misma y a veces
+no. La información para decidirlo no está en los nombres.
+
+### La taxonomía ya existía
+
+Medido contra la fuente (2024-03, subasta inversa y menor cuantía):
+
+- **1 708 de 1 708** procesos con ítems traen `classification.id` — el CPC. El 100%.
+- Con su **descripción oficial en español**.
+- **Jerárquico por truncamiento**: 3 dígitos → 155 grupos, 4 → 291, 5 → 353.
+- Los grupos son coherentes: `87141` mantenimiento de vehículos, `54121` construcción de
+  edificaciones, `35260` medicamentos.
+
+Y `precio_cpc` **ya estaba diseñada con el CPC como clave** desde la migración 0002. La
+tabla `categoria` era una segunda taxonomía, paralela y peor, compitiendo con la que el
+benchmark necesita.
+
+### Decisión
+
+1. **La categoría es la subclase CPC, 5 dígitos.** ~350 grupos. Oficial, estable entre
+   ejecuciones sin depender de una semilla, y jerárquica si algún día hace falta subir o
+   bajar de nivel.
+2. **`precio_cpc` sigue con el CPC completo**, de 8 a 12 dígitos. Comparar precios exige
+   el producto exacto: «Amoxicilina 500 mg, caja x blíster», no «medicamentos». Los dos
+   niveles son complementarios, no alternativos.
+3. **`proceso_resumen.cpc`** —declarada en la 0001 y **nula en los 280 020 procesos**,
+   porque la ruta CSV no la trae— se puebla desde los ítems del Parquet, tomando el CPC
+   **dominante por monto**: cien líneas de clips no convierten en papelería una compra de
+   computadoras.
+4. **Al modelo solo se le pide acortar el nombre oficial**, con las descripciones
+   delante. Trabajo acotado: ~350 llamadas, una vez, y no se repiten en cada ejecución
+   porque el nombre de una categoría existente se conserva.
+5. **La salida del modelo se valida.** Longitud, número de palabras, mayúscula inicial,
+   sin cifras y sin las frases que delatan una respuesta en vez de un nombre. Lo que no
+   pasa **no se publica**: se cae a la descripción oficial recortada. Es preferible un
+   nombre burocrático de la fuente a uno inventado que nadie ha comprobado.
+
+`clasifica.py` deja de ser la fuente de la taxonomía. Su maquinaria de embeddings queda
+para lo que sí hace bien —emparejar un texto con una categoría existente—, que es como se
+resolverá el ~5% de procesos que no traen ítems.
+
+### Lo que enseña
+
+El proyecto gastó embeddings, agrupamiento, un modelo de 70 B y dos rondas de fusión para
+reconstruir peor una clasificación que la fuente entregaba gratis y completa en cada
+registro. La pregunta «¿ya viene esto en el dato?» tenía que haber ido antes que
+«¿cómo lo calculo?».
