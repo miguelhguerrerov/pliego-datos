@@ -228,7 +228,17 @@ def main() -> int:
     p.add_argument("--reusar", help="aplica una taxonomia ya construida (JSON + asignacion)")
     p.add_argument("--fusionar", action="store_true", help="fusiona categorias duplicadas")
     p.add_argument("--pendientes", action="store_true", help="clasifica lo recargado por la ingesta")
+    p.add_argument("--por-texto", action="store_true",
+                   help="asigna categoria CPC por cercania a los que no pueden tenerla")
     args = p.parse_args()
+
+    if args.por_texto:
+        from carga import conexion
+
+        with conexion() as con:
+            n, textos = asignar_por_texto(con)
+        print(f"asignados por cercania: {n:,} procesos sobre {textos:,} textos unicos")
+        return 0
 
     if args.pendientes:
         from carga import conexion
@@ -416,6 +426,98 @@ def asignar_pendientes(con) -> tuple[int, int]:
         con.commit()
     return pendientes, len(asignaciones)
 
+
+
+
+# --- asignacion por cercania semantica a una categoria CPC ----------------------
+
+UMBRAL_CERCANIA = 0.55   # por debajo, mejor sin categoria que con una inventada
+
+
+def asignar_por_texto(con, umbral: float = UMBRAL_CERCANIA) -> tuple[int, int]:
+    """Asigna categoria a los procesos que NUNCA podran recibirla del CPC.
+
+    **Por que existe, medido.** La taxonomia sale del CPC de los items, y los items solo
+    vienen por la ruta JSON. Pero el JSON troceado por metodo **no contiene ni un release
+    en planificacion**: en esa fase el proceso todavia no tiene metodo asignado, asi que
+    no cae en ningun trozo. Comprobado sobre subasta inversa de 2026-07 — de 1.264
+    releases, cero con tag solo `planning`:
+
+        ["planning","tender"]                     681
+        ["planning","tender","award"]             518
+        ["planning","tender","award","contract"]   65
+
+    Consecuencia: los ~13.000 procesos del radar **no pueden recibir CPC por la ruta del
+    Parquet, nunca**. No es el 5% de casos raros que se suponia: es la pantalla que da
+    la razon para volver cada dia, entera.
+
+    Aqui los embeddings hacen lo que si hacen bien —emparejar un texto con una categoria
+    que ya existe— en vez de lo que hacian mal, que era inventar la taxonomia (D-030).
+
+    Por debajo del umbral no se asigna nada. Una categoria equivocada es peor que
+    ninguna: el usuario filtra por ella y no encuentra lo suyo, sin saber por que.
+    """
+    import numpy as np
+
+    with con.cursor() as cur:
+        cur.execute("select id, nombre, cpc from categoria where cpc is not null")
+        cats = cur.fetchall()
+        cur.execute("""
+            select ocid, objeto from proceso_resumen
+             where categoria_id is null and objeto is not null and length(objeto) > 8
+        """)
+        pendientes = cur.fetchall()
+
+    if not cats or not pendientes:
+        print(f"  nada que asignar (categorias={len(cats)}, pendientes={len(pendientes)})")
+        return 0, 0
+
+    # Textos unicos: 13.000 procesos son muchos menos objetos distintos, y cada
+    # embedding se paga.
+    textos = {}
+    for ocid, objeto in pendientes:
+        textos.setdefault(normalizar_texto(objeto), []).append(ocid)
+    unicos = [t for t in textos if t]
+    print(f"  {len(pendientes):,} procesos sin categoria · {len(unicos):,} textos unicos "
+          f"· {len(cats):,} categorias")
+
+    V = np.asarray(embeber([c[1] for c in cats]), dtype="float32")
+    V /= np.linalg.norm(V, axis=1, keepdims=True) + 1e-9
+    T = np.asarray(embeber(unicos), dtype="float32")
+    T /= np.linalg.norm(T, axis=1, keepdims=True) + 1e-9
+
+    S = T @ V.T
+    mejor = S.argmax(axis=1)
+    parecido = S.max(axis=1)
+
+    asignaciones = []
+    flojos = 0
+    for i, texto in enumerate(unicos):
+        if parecido[i] < umbral:
+            flojos += 1
+            continue
+        cid = cats[int(mejor[i])][0]
+        for ocid in textos[texto]:
+            asignaciones.append((ocid, cid))
+
+    print(f"  por debajo del umbral {umbral}: {flojos:,} textos se quedan sin categoria")
+
+    if not asignaciones:
+        return 0, 0
+    with con.cursor() as cur:
+        cur.execute("create temp table cercania_tmp (ocid text primary key, "
+                    "categoria_id integer) on commit drop")
+        with cur.copy("copy cercania_tmp (ocid, categoria_id) from stdin") as cp:
+            for fila in asignaciones:
+                cp.write_row(fila)
+        cur.execute("""
+            update proceso_resumen p set categoria_id = c.categoria_id
+              from cercania_tmp c
+             where p.ocid = c.ocid and p.categoria_id is null
+        """)
+        n = cur.rowcount
+    con.commit()
+    return n, len(unicos)
 
 if __name__ == "__main__":
     raise SystemExit(main())

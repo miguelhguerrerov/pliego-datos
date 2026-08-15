@@ -36,6 +36,15 @@ jobs:
         run: |
           python src/taxonomia.py ${{ inputs.sin_modelo && '--sin-modelo' || '' }}
 
+      - name: Asignar por cercania lo que no puede tener CPC
+        # Los procesos en planificacion NUNCA reciben CPC: el JSON troceado por metodo
+        # no contiene ni un release en esa fase, porque el metodo aun no existe. Son
+        # ~13.000 procesos y son el radar entero. Ver src/clasifica.py.
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          DEEPINFRA_API_KEY: ${{ secrets.DEEPINFRA_API_KEY }}
+        run: python src/clasifica.py --por-texto
+
       - name: Consultas de producto
         # Una taxonomia que se construye sin error puede dejar el 90% de los procesos sin
         # categoria. Ver docs/metodo.md regla 1.

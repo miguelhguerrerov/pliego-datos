@@ -184,3 +184,57 @@ def test_una_categoria_que_ya_tiene_nombre_lo_conserva():
     )
     assert llamadas == ["87141"], f"solo debía nombrarse la nueva, y se llamó a {llamadas}"
     assert nombres["35260"] == "Medicamentos"
+
+
+def test_el_guardia_de_ejecucion_esta_al_final():
+    """D-023: añadir funciones con `cat >>` las deja DESPUÉS del guardia, y entonces
+    `main()` corre antes de que existan. Importa sin error y falla al ejecutarse — que es
+    la peor combinación, porque las pruebas pasan.
+
+    Volvió a pasar hoy, al añadir `referencial_de_items`."""
+    from pathlib import Path
+
+    fuente = (Path(__file__).resolve().parents[1] / "src" / "taxonomia.py").read_text(
+        encoding="utf-8")
+    assert fuente.rstrip().endswith("raise SystemExit(main())"), (
+        "hay código después del guardia `if __name__ == '__main__'`: se ejecutaría "
+        "main() antes de definirlo (D-023)"
+    )
+
+
+# --- el referencial que el CSV no trae ------------------------------------------
+
+def test_el_referencial_sale_de_los_items_convocados():
+    """1.264 de 5.717 procesos convocados de julio salían sin monto, y los 1.264 eran
+    subasta inversa: el CSV nunca trae `value_amount` para ese método. Cantidad × precio
+    unitario lo recupera."""
+    from taxonomia import referencial_de_items
+
+    items = [
+        {"ocid": "a", "origen": "tender", "cantidad": 10, "precio_unitario": 100},
+        {"ocid": "a", "origen": "tender", "cantidad": 2, "precio_unitario": 50},
+    ]
+    assert referencial_de_items(items) == {"a": 1100.0}
+
+
+def test_el_referencial_no_mezcla_lo_adjudicado():
+    """El referencial es lo que se CONVOCA. Sumar lo adjudicado daría una cifra que no es
+    ninguna de las dos, y el ratio adjudicado/referencial —que es media tesis del
+    producto— quedaría inservible."""
+    from taxonomia import referencial_de_items
+
+    items = [
+        {"ocid": "a", "origen": "tender", "cantidad": 10, "precio_unitario": 100},
+        {"ocid": "a", "origen": "award", "cantidad": 10, "precio_unitario": 80},
+    ]
+    assert referencial_de_items(items) == {"a": 1000.0}
+
+
+def test_un_item_sin_cifras_no_aporta_un_cero():
+    """Un proceso cuyos ítems no declaran precio no debe aparecer con referencial 0: cero
+    y «no declarado» son cosas distintas, y una de las dos es mentira."""
+    from taxonomia import referencial_de_items
+
+    assert referencial_de_items(
+        [{"ocid": "a", "origen": "tender", "cantidad": None, "precio_unitario": None}]
+    ) == {}

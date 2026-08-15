@@ -289,6 +289,13 @@ def escribir(con, nombres: dict[str, str], por_ocid: dict[str, str],
     trabajo de agregados corre en una ventana de minutos.
     """
     with con.cursor() as cur:
+        # 0. La secuencia de `id`. La taxonomía anterior insertaba identificadores
+        #    explícitos, así que la secuencia se quedó atrás y el primer insert sin `id`
+        #    choca contra la clave primaria. No se ve venir: el error aparece al escribir,
+        #    después de todo el trabajo.
+        cur.execute("select setval(pg_get_serial_sequence('categoria','id'), "
+                    "coalesce((select max(id) from categoria), 1))")
+
         # 1. Las categorías. Se conserva el nombre de las que ya existen: renombrar cada
         #    noche haría que la misma categoría cambiara de rótulo bajo los pies del
         #    usuario, y gastaría 350 llamadas al modelo por gusto.
@@ -383,9 +390,78 @@ def main() -> int:
 
     with conexion() as con:
         n_cat, n_proc = escribir(con, nombres, por_ocid, cpc_completo)
-    print(f"\ncategorías: {n_cat:,}  ·  procesos recategorizados: {n_proc:,}")
+        print(f"\ncategorías: {n_cat:,}  ·  procesos recategorizados: {n_proc:,}")
+
+        # El referencial que el CSV no trae para subasta inversa: el 22,1% de los
+        # procesos convocados salía sin cifra, y los ítems del JSON la recuperan.
+        refs = referencial_de_items(items)
+        n_ref = completar_referencial(con, refs)
+        print(f"referencial reconstruido de ítems: {n_ref:,} procesos "
+              f"(de {len(refs):,} calculables)")
     return 0
 
+
+
+
+# --- el referencial que el CSV no trae ------------------------------------------
+
+def referencial_de_items(items: list[dict]) -> dict[str, float]:
+    """Monto convocado de cada proceso, reconstruido de sus ítems.
+
+    **Por qué hace falta.** El CSV no trae `value_amount` para subasta inversa
+    electrónica: medido en julio de 2026, **1 264 de 5 717 procesos convocados (22,1%)
+    salían sin monto, y los 1 264 eran subasta inversa**. Ni uno de otro método.
+
+    `CLAUDE.md` ya lo anotaba como «no calculable desde CSV» y ahí se quedó — pero sí es
+    calculable desde el JSON, que ya descargamos y publicamos: cantidad × precio unitario
+    de los ítems recupera **1 170 de los 1 264, el 92,6%**.
+
+    Importa porque la subasta inversa es el método donde más compite el segmento
+    objetivo, y una oportunidad sin cifra no es accionable.
+
+    Solo ítems de `tender`: el referencial es lo que se convoca. Lo adjudicado ya viene
+    de `awards` por la ruta CSV, y mezclarlos daría una cifra que no es ninguna de las dos.
+    """
+    total: dict[str, float] = defaultdict(float)
+    for it in items:
+        if it.get("origen") != "tender":
+            continue
+        ocid = it.get("ocid")
+        cantidad = it.get("cantidad")
+        precio = it.get("precio_unitario")
+        if not ocid or not cantidad or not precio:
+            continue
+        try:
+            total[ocid] += float(cantidad) * float(precio)
+        except (TypeError, ValueError):
+            continue
+    return {o: round(v, 2) for o, v in total.items() if v > 0}
+
+
+def completar_referencial(con, montos: dict[str, float]) -> int:
+    """Rellena `referencial` SOLO donde falta. Nunca pisa un dato de la fuente.
+
+    Si el CSV declaró un referencial, ese manda: es lo que la entidad publicó. Lo
+    reconstruido es un respaldo para donde no hay nada, no una corrección.
+    """
+    if not montos:
+        return 0
+    with con.cursor() as cur:
+        cur.execute("create temp table ref_tmp (ocid text primary key, monto numeric) "
+                    "on commit drop")
+        with cur.copy("copy ref_tmp (ocid, monto) from stdin") as cp:
+            for ocid, monto in montos.items():
+                cp.write_row((ocid, monto))
+        cur.execute("""
+            update proceso_resumen p
+               set referencial = r.monto
+              from ref_tmp r
+             where p.ocid = r.ocid
+               and p.referencial is null
+        """)
+        n = cur.rowcount
+    con.commit()
+    return n
 
 if __name__ == "__main__":
     raise SystemExit(main())
