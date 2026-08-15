@@ -146,3 +146,24 @@ def test_tramo_situa_el_segmento_objetivo():
     assert tramo_de(250_000) == "100-500K"      # segmento objetivo
     assert tramo_de(1_500_000) == "500K-2M"     # segmento objetivo
     assert tramo_de(50_000_000) == ">10M"
+
+
+# --- estructura del modulo de clasificacion -------------------------------------
+
+def test_clasifica_expone_sus_funciones():
+    """El bloque if __name__ tiene que ser lo ULTIMO del archivo.
+
+    Anadir funciones al final con un append las deja despues del guard: Python
+    ejecuta main() antes de definirlas y falla con NameError en produccion, no al
+    importar. Paso con fusionar() y asignar_pendientes(). Ver docs/decisiones.md D-023.
+    """
+    import clasifica
+
+    for nombre in ("construir_taxonomia", "escribir", "fusionar", "asignar_pendientes"):
+        assert hasattr(clasifica, nombre), f"clasifica.{nombre} no es alcanzable"
+
+    fuente = Path(clasifica.__file__).read_text(encoding="utf-8")
+    assert fuente.rstrip().endswith("raise SystemExit(main())"), (
+        "el guard if __name__ no es lo ultimo del archivo: las funciones definidas "
+        "despues no existiran cuando main() las llame"
+    )

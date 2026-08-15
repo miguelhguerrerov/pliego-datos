@@ -282,10 +282,6 @@ def main() -> int:
     return 0
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
-
-
 # --- fusion de categorias duplicadas -------------------------------------------
 
 UMBRAL_FUSION = 0.92
@@ -402,3 +398,7 @@ def asignar_pendientes(con) -> tuple[int, int]:
             cur.executemany("update proceso_resumen set categoria_id=%s where ocid=%s", asignaciones)
         con.commit()
     return pendientes, len(asignaciones)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

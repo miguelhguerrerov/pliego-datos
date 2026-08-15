@@ -551,3 +551,32 @@ reconstrucción semanal, que sí embebe.
 lo que otros procesos añadieron a esas filas**. Al diseñar un `delete`+`copy` hay que
 preguntarse qué columnas las escribe alguien más — aquí, `categoria_id`. Es un fallo que
 ninguna prueba detecta porque cada pieza funciona bien por separado.
+
+---
+
+## D-023 · Las funciones añadidas al final quedaban después del guard
+**2026-08-15**
+
+**Contexto.** La fusión de categorías falló en Actions con
+`NameError: name 'fusionar' is not defined`, aunque la función estaba escrita en el
+archivo y el módulo importaba sin error.
+
+**Causa.** Añadí `fusionar()` y `asignar_pendientes()` **al final del archivo**, con un
+append. `clasifica.py` termina en el bloque `if __name__ == "__main__": raise
+SystemExit(main())`, así que al ejecutarse el módulo Python llega al guard, llama a
+`main()`, y las funciones que vienen después todavía no se han evaluado.
+
+Afectaba a las dos: `--pendientes` —el arreglo de D-022, que corre a diario— también
+habría fallado.
+
+**Por qué no lo detectó nada.** El módulo **importa bien**: al importar, Python sí evalúa
+el archivo entero y las funciones quedan definidas. `python -c "import clasifica"` pasa.
+Solo falla cuando se ejecuta como programa. Ninguna prueba lo cubría porque todas
+importan el módulo en vez de invocarlo.
+
+**Decisión.** El guard vuelve al final, y una prueba comprueba dos cosas: que las cuatro
+funciones son alcanzables, y que **el archivo termina en el guard**.
+
+**Consecuencia de método.** Añadir código al final de un archivo con `append` es seguro en
+un módulo sin guard y peligroso en uno con él. Es el tercer fallo de la sesión causado por
+editar a ciegas en vez de con la herramienta de edición, que habría exigido decir dónde.
