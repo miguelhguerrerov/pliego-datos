@@ -109,16 +109,50 @@ def _subir(release: dict, ruta: Path) -> None:
     _peticion("POST", url, ruta.read_bytes(), tipo="application/octet-stream")
 
 
+def _registrar(anio, mes, estado, detalle=None, kb=0):
+    """Deja constancia en cobertura_parquet. Sin registro, un mes incompleto queda
+    publicado y en silencio, que es el fallo que este proyecto existe para evitar."""
+    if not os.environ.get("SUPABASE_DB_URL"):
+        return
+    from carga import conexion
+
+    with conexion() as con, con.cursor() as cur:
+        cur.execute("""
+            insert into cobertura_parquet (anio, mes, estado, n_procesos, n_items,
+                n_oferentes, n_pujas, metodos_sin_datos, metodos_fallidos, kb, fecha)
+            values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, now())
+            on conflict (anio, mes) do update set
+                estado=excluded.estado, n_procesos=excluded.n_procesos,
+                n_items=excluded.n_items, n_oferentes=excluded.n_oferentes,
+                n_pujas=excluded.n_pujas, metodos_sin_datos=excluded.metodos_sin_datos,
+                metodos_fallidos=excluded.metodos_fallidos, kb=excluded.kb, fecha=now()
+        """, (anio, mes, estado,
+              len(detalle.procesos) if detalle else None,
+              len(detalle.items) if detalle else None,
+              len(detalle.oferentes) if detalle else None,
+              len(detalle.pujas) if detalle else None,
+              len(detalle.sin_datos) if detalle else 0,
+              len(detalle.metodos_fallidos) if detalle else 0,
+              int(kb)))
+        con.commit()
+
+
 def publicar_mes(anio: int, mes: int, subir: bool) -> str:
     try:
         detalle = descargar_detalle(anio, mes, cache=CACHE)
     except ErrorDescarga as e:
         print(f"{anio}-{mes:02d} PENDIENTE: {e}")
+        _registrar(anio, mes, "pendiente")
         return "pendiente"
 
     rutas = _escribir_parquet(detalle, SALIDA)
     peso = sum(r.stat().st_size for r in rutas) / 1024
-    aviso = f" · {len(detalle.metodos_fallidos)} métodos fallidos" if detalle.metodos_fallidos else ""
+    partes = []
+    if detalle.sin_datos:
+        partes.append(f"{len(detalle.sin_datos)} métodos sin datos")
+    if detalle.metodos_fallidos:
+        partes.append(f"{len(detalle.metodos_fallidos)} FALLIDOS")
+    aviso = (" · " + " · ".join(partes)) if partes else ""
     print(f"{anio}-{mes:02d} {detalle.resumen()} · {peso:,.0f} KB{aviso}")
 
     if subir and rutas:
@@ -126,7 +160,9 @@ def publicar_mes(anio: int, mes: int, subir: bool) -> str:
         for r in rutas:
             _subir(release, r)
         print(f"          publicado en el release datos-{anio}")
-    return "parcial" if detalle.metodos_fallidos else "publicado"
+    estado = "publicado" if detalle.completo else "parcial"
+    _registrar(anio, mes, estado, detalle, peso)
+    return estado
 
 
 def main() -> int:

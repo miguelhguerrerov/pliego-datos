@@ -37,6 +37,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           if [ -n "${{ inputs.desde }}" ]; then
             python src/publicar.py --desde "${{ inputs.desde }}" --hasta "${{ inputs.hasta || inputs.desde }}"

@@ -31,6 +31,7 @@ from normaliza import estado_de_tag, metodo_base
 class DetalleMes:
     anio: int
     mes: int
+    sin_datos: list[str] = field(default_factory=list)
     items: list[dict] = field(default_factory=list)
     oferentes: list[dict] = field(default_factory=list)
     pujas: list[dict] = field(default_factory=list)
@@ -45,10 +46,31 @@ class DetalleMes:
             f"{len(self.partes):,} partes"
         )
 
+    @property
+    def completo(self) -> bool:
+        """Un metodo sin datos NO es un fallo. Solo lo son los que fallaron de verdad."""
+        return not self.metodos_fallidos
+
+
+# El servidor responde 500 con FileNotFoundException cuando NO HAY DATOS de ese metodo
+# ese mes, en vez de devolver un archivo vacio. Medido en agosto de 2026: los 6 metodos
+# que "fallaban" eran exactamente los 6 sin ningun proceso segun el CSV.
+#
+# Distinguirlo importa: si todos los meses aparecen como parciales, la etiqueta deja de
+# significar nada y entrena a ignorarla. Ver docs/decisiones.md D-020.
+SIN_DATOS = "FileNotFoundException"
+
+
+class MetodoSinDatos(Exception):
+    """No hay procesos de ese metodo ese mes. No es un fallo."""
+
 
 def _descargar_metodo(anio: int, mes: int, metodo: str, cache: Path | None) -> list | None:
-    """Descarga el JSON de un método concreto. Devuelve None si agota los reintentos:
-    un método que falla no debe tumbar el mes entero."""
+    """Descarga el JSON de un método concreto.
+
+    Devuelve None si agota los reintentos; lanza MetodoSinDatos si la fuente indica
+    que no hay procesos de ese método ese mes.
+    """
     clave = urllib.parse.quote(metodo, safe="")[:40]
     destino = cache / f"{anio}_{mes:02d}_{clave}.json.zip" if cache else None
     if destino and destino.exists() and destino.stat().st_size > 500:
@@ -66,6 +88,13 @@ def _descargar_metodo(anio: int, mes: int, metodo: str, cache: Path | None) -> l
                     crudo = r.read()
                 zipfile.ZipFile(io.BytesIO(crudo))  # falla si viene truncado
                 break
+            except urllib.error.HTTPError as e:
+                cuerpo = e.read()[:400].decode("utf-8", errors="replace")
+                if e.code == 500 and SIN_DATOS in cuerpo:
+                    raise MetodoSinDatos(metodo) from None
+                print(f"    reintento {metodo[:24]} ({intento}/{INTENTOS}): HTTP {e.code}")
+                crudo = None
+                time.sleep(3 * intento)
             except Exception as e:  # noqa: BLE001 - se registra y se reintenta
                 print(f"    reintento {metodo[:24]} ({intento}/{INTENTOS}): {type(e).__name__}")
                 crudo = None
@@ -179,7 +208,11 @@ def descargar_detalle(anio: int, mes: int, cache: Path | None = None) -> Detalle
     """Descarga y extrae el detalle de un mes, troceando por método."""
     detalle = DetalleMes(anio, mes)
     for metodo in METODOS:
-        paquetes = _descargar_metodo(anio, mes, metodo, cache)
+        try:
+            paquetes = _descargar_metodo(anio, mes, metodo, cache)
+        except MetodoSinDatos:
+            detalle.sin_datos.append(metodo)
+            continue
         if paquetes is None:
             detalle.metodos_fallidos.append(metodo)
             continue
@@ -189,7 +222,7 @@ def descargar_detalle(anio: int, mes: int, cache: Path | None = None) -> Detalle
             for release in (paquete.get("releases") or []):
                 _extraer(release, detalle)
 
-    if len(detalle.metodos_fallidos) == len(METODOS):
+    if len(detalle.metodos_fallidos) + len(detalle.sin_datos) == len(METODOS)             and not detalle.sin_datos:
         raise ErrorDescarga(
             f"{anio}-{mes:02d}: fallaron los {len(METODOS)} métodos. Márcalo pendiente."
         )

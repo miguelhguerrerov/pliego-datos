@@ -456,3 +456,37 @@ hallazgo que sostiene el producto. Lo que cambia es que ahora dice de qué venta
 **Consecuencia de método.** El invariante 11 exige mostrar el número de observaciones
 junto a cada cifra agregada. Le falta una mitad: **junto a la ventana temporal**. Una
 media sin periodo es tan ambigua como una media sin `n`.
+
+---
+
+## D-020 · Un método sin datos no es un fallo
+**2026-08-14**
+
+**Contexto.** La primera publicación de Parquet terminó con `resumen: parcial=2` y una
+cascada de reintentos agotados. Agosto de 2026 publicó 509 procesos cuando el CSV —que
+sabemos completo— tiene 1 546.
+
+**Causa.** La fuente responde **HTTP 500 con `FileNotFoundException`** cuando **no hay
+datos** de ese método ese mes, en vez de devolver un archivo vacío. El código lo trataba
+como fallo, agotaba los cuatro reintentos y marcaba el mes como parcial.
+
+Comprobado contra el CSV: los **seis** métodos que «fallaban» en agosto son exactamente
+los **seis que tienen cero procesos** ese mes — licitación de seguros, cotización, menor
+cuantía, catálogo de mejor oferta, bienes y servicios únicos, y contrataciones con
+empresas públicas internacionales.
+
+**El mes estaba completo. Fui yo quien lo etiquetó mal.**
+
+**Decisión.** Se distinguen tres situaciones: `sin_datos` (500 con `FileNotFoundException`,
+no es fallo y no se reintenta), `metodos_fallidos` (502, tiempos de espera, respuesta
+truncada) y `pendiente` (fallaron todos). Solo la segunda marca el mes como parcial.
+
+**Por qué importa más de lo que parece.** Una advertencia que salta sin motivo **entrena a
+ignorarla**. Si todos los meses aparecen como parciales, la etiqueta deja de significar
+nada — justo lo contrario de para lo que existe el registro de cobertura. Un aviso falso
+no es ruido inocuo: destruye el valor de los avisos verdaderos.
+
+**Y de paso, la cobertura del Parquet no se registraba en ningún sitio.** La capa CSV
+lleva su registro en `cobertura` desde el principio; la JSON no llevaba ninguno, así que
+un mes con métodos realmente fallidos quedaba publicado y en silencio. Se añade
+`cobertura_parquet` (migración 0006).
