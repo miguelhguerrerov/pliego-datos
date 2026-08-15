@@ -37,11 +37,17 @@ jobs:
           import sys
           sys.path.insert(0, "src")
           from clasifica import compactar
-          from carga import conexion, verificar_presupuesto
+          from carga import conexion, tamano_mb
+
+          # `tamano_mb` y no `verificar_presupuesto`: la version con alarma LANZA cuando
+          # se pasa del presupuesto, asi que abortaba este trabajo antes de compactar.
+          # Una comprobacion que impide su propio remedio no sirve de nada.
           tablas = "${{ inputs.tablas }}".split()
           with conexion() as con:
-              print(f"antes: {verificar_presupuesto(con)} MB")
+              antes = tamano_mb(con)
+          print(f"antes: {antes} MB")
           compactar(*tablas)
           with conexion() as con:
-              print(f"despues: {verificar_presupuesto(con)} MB")
+              despues = tamano_mb(con)
+          print(f"despues: {despues} MB  (liberados {antes - despues:.1f} MB)")
           PY
