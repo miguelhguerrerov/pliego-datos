@@ -25,7 +25,9 @@ import re
 from typing import NamedTuple
 
 # Por encima de esta fracción de líneas afectadas se considera cambio de la fuente.
-UMBRAL_SISTEMATICO = 0.01  # 1%
+UMBRAL_SISTEMATICO = 0.01  # 1% del texto acentuado, no de las líneas. Ver D-029.
+MINIMO_ROTOS = 20          # suelo absoluto: en un fichero con 12 acentos, 1 roto no es
+                           # un cambio de codificación en la fuente, es una errata.
 
 
 class ErrorCodificacion(Exception):
@@ -79,11 +81,35 @@ def reparar_doble_codificacion(texto: str) -> tuple[str, int]:
 
 
 def fraccion_lineas_afectadas(texto: str) -> float:
+    """Cuántas líneas traen mojibake. **Solo informativo**: ver `fraccion_acentos_rotos`.
+
+    Se conserva porque el informe de cobertura la muestra, pero NO decide nada: en un
+    JSON de 4,8 MB con 28 líneas, un carácter roto da el 3,6% y cualquier umbral por
+    líneas dispara. Ver docs/decisiones.md D-029.
+    """
     lineas = texto.splitlines()
     if not lineas:
         return 0.0
     afectadas = sum(1 for l in lineas if PATRON_MOJIBAKE.search(l))
     return afectadas / len(lineas)
+
+
+def fraccion_acentos_rotos(texto: str) -> tuple[float, int, int]:
+    """Qué proporción del texto acentuado viene doblemente codificado.
+
+    **Este es el denominador correcto y el de líneas no lo era.** La pregunta que hay que
+    responder es «¿cambió la fuente de codificación?», y un cambio de codificación rompe
+    *todos* los acentos, no uno. Medir sobre líneas confunde el tamaño del fichero con la
+    gravedad del problema: la misma corrupción daba 0,09% en un CSV de 1.070 líneas y
+    3,6% en un JSON de 28, y por eso detuvo dieciséis meses de publicación.
+
+    Devuelve (fraccion, n_rotos, n_acentos).
+    """
+    rotos = len(PATRON_MOJIBAKE.findall(texto))
+    acentos = sum(1 for c in texto if ord(c) > 127)
+    if acentos == 0:
+        return 0.0, 0, 0
+    return rotos / acentos, rotos, acentos
 
 
 def decodificar(datos: bytes, origen: str) -> TextoValidado:
@@ -103,14 +129,18 @@ def decodificar(datos: bytes, origen: str) -> TextoValidado:
             f"normalizador ANTES de volver a cargar. No relajes esta comprobación."
         ) from e
 
-    fraccion = fraccion_lineas_afectadas(texto)
-    if fraccion > UMBRAL_SISTEMATICO:
+    # La alarma mide sobre el texto ACENTUADO, no sobre las líneas: un cambio de
+    # codificación en origen rompe todos los acentos, no uno. Ver D-029.
+    proporcion, rotos, acentos = fraccion_acentos_rotos(texto)
+    if proporcion > UMBRAL_SISTEMATICO and rotos >= MINIMO_ROTOS:
         raise ErrorCodificacion(
-            f"{origen}: el {fraccion:.1%} de las líneas viene doblemente codificado, "
-            f"por encima del umbral del {UMBRAL_SISTEMATICO:.0%}.\n"
+            f"{origen}: {rotos:,} de {acentos:,} caracteres acentuados "
+            f"({proporcion:.1%}) vienen doblemente codificados, por encima del umbral "
+            f"del {UMBRAL_SISTEMATICO:.0%}.\n"
             f"Eso ya no es suciedad de captura sino un cambio en la fuente. "
             f"Revisa docs/datos.md §5.1 antes de cargar nada."
         )
+    fraccion = fraccion_lineas_afectadas(texto)   # solo para el informe de cobertura
 
     texto, reparaciones = reparar_doble_codificacion(texto)
     return TextoValidado(texto, reparaciones, fraccion)

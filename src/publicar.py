@@ -26,6 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from codificacion import ErrorCodificacion  # noqa: E402
 from descarga import ErrorDescarga  # noqa: E402
 from detalle import DetalleMes, descargar_detalle  # noqa: E402
 
@@ -227,6 +228,14 @@ def publicar_mes(anio: int, mes: int, subir: bool) -> str:
         print(f"{anio}-{mes:02d} PENDIENTE: {e}")
         _registrar(anio, mes, "pendiente")
         return "pendiente"
+    except ErrorCodificacion as e:
+        # Un mes que no pasa el guardia de codificacion se anota y se sigue. Antes
+        # subia y abortaba el proceso entero: 2019-09 se llevo por delante los quince
+        # meses siguientes, que no tenian nada malo. El fallo de un mes es informacion
+        # sobre ese mes, no sobre el rango. Ver docs/decisiones.md D-029.
+        print(f"{anio}-{mes:02d} DEGRADADO por codificacion: {e}")
+        _registrar(anio, mes, "degradado")
+        return "degradado"
 
     rutas = _escribir_parquet(detalle, SALIDA)
     peso = sum(r.stat().st_size for r in rutas) / 1024

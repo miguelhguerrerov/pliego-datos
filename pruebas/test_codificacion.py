@@ -46,8 +46,15 @@ def test_latin1_detiene_la_ingesta():
 
 
 def test_corrupcion_sistematica_detiene_la_ingesta():
+    """«Sistemática» quiere decir un fichero entero roto, no una cadena suelta.
+
+    Esta prueba pasaba una sola línea y la daba por sistemática, que es la misma
+    confusión que tenía la alarma: tomar una muestra pequeña por una tendencia. Con el
+    suelo absoluto de D-029, veinte fragmentos rotos son el mínimo para hablar de un
+    cambio en la fuente — y un fichero de verdad que cambie de codificación trae miles.
+    """
     with pytest.raises(ErrorCodificacion, match="doblemente codificado"):
-        decodificar(MOJIBAKE.encode("utf-8"), "prueba")
+        decodificar((MOJIBAKE * 30).encode("utf-8"), "prueba")
 
 
 def test_corrupcion_esporadica_se_repara_y_continua():
@@ -91,3 +98,53 @@ def test_fuente_real_es_utf8():
     v = decodificar(d.zip.read(nombre), "tender")
     assert "Licitación" in v.texto or "Cotización" in v.texto
     assert v.fraccion_afectada < UMBRAL_SISTEMATICO
+
+
+# --- D-029: la alarma medía sobre el denominador equivocado ---------------------
+
+def _mojibake(base: str) -> str:
+    """Construye texto doblemente codificado sin escribir literales acentuados: las
+    herramientas de edición los normalizan y ya sabotearon este detector tres veces."""
+    return base.encode("utf-8").decode("latin-1")
+
+
+def test_un_caracter_roto_en_un_json_enorme_no_detiene_la_carga():
+    """El caso real: `releases_2019_septiembre_licitacion.json`, 4,8 MB en **28 líneas**,
+    con UN carácter roto. Medido por líneas daba 3,6% y superaba el umbral del 1%; el
+    guardia detuvo la publicación y se llevó por delante los quince meses siguientes,
+    que no tenían nada malo.
+
+    La misma corrupción daba 0,09% en un CSV de 1.070 líneas. El tamaño del fichero no
+    puede decidir si la fuente cambió de codificación."""
+    from codificacion import decodificar
+
+    acentuado = ("descripcion con acentos: " + chr(0xE1) + chr(0xE9) + chr(0xED)
+                 + chr(0xF3) + chr(0xFA) + chr(0xF1)) * 400
+    linea = acentuado + _mojibake("TOPOGR" + chr(0xC1) + "FICO")
+    texto = "\n".join([acentuado] * 27 + [linea])
+
+    r = decodificar(texto.encode("utf-8"), "2019-09/releases.json")
+    assert r.reparaciones >= 1, "el carácter roto debía repararse"
+    assert chr(0xC1) in r.texto, "la reparación debía devolver la A con tilde"
+
+
+def test_una_fuente_que_cambia_de_codificacion_si_detiene_la_carga():
+    """La prueba de falso positivo al revés (regla 5 del método): relajar el umbral no
+    puede desactivar la alarma. Si la fuente cambia, TODOS los acentos se rompen."""
+    import pytest as _pytest
+
+    from codificacion import ErrorCodificacion, decodificar
+
+    roto = _mojibake("Cat" + chr(0xE1) + "logo Electr" + chr(0xF3) + "nico") * 200
+    with _pytest.raises(ErrorCodificacion, match="doblemente codificados"):
+        decodificar(roto.encode("utf-8"), "2027-01/releases.json")
+
+
+def test_un_fichero_con_pocos_acentos_no_dispara_por_uno_solo():
+    """Suelo absoluto: en un fichero con doce acentos, uno roto es una errata de captura,
+    no un cambio de codificación en la fuente."""
+    from codificacion import decodificar
+
+    texto = "OBRA " + chr(0xDA) + "NICA " * 6 + _mojibake(chr(0xC1))
+    r = decodificar(texto.encode("utf-8"), "mini.json")
+    assert r.reparaciones >= 1

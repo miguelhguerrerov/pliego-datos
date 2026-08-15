@@ -748,3 +748,47 @@ ARM64, donde no hay ruedas: el módulo tiene que poder importarse sin pyarrow.
 **Consecuencia.** Los meses publicados antes de este cambio se escribieron con el
 esquema inferido y no son comparables con los nuevos. Se republican los 140, en cuatro
 tandas paralelas por rango de años: un solo trabajo pasaría del límite de 360 minutos.
+
+## D-029 — La alarma de codificación medía sobre el denominador equivocado
+
+**15 de agosto de 2026.**
+
+La republicación de los 140 meses de Parquet se detuvo en 2019-09 con:
+
+```
+el 3.6% de las líneas viene doblemente codificado, por encima del umbral del 1%.
+Eso ya no es suciedad de captura sino un cambio en la fuente.
+```
+
+**Era un falso positivo, y se llevó por delante dieciséis meses** (2019-09 a 2020-12),
+que no tenían nada malo.
+
+Los bytes, mirados con `repr()` y no en pantalla:
+
+| | |
+|---|---|
+| Archivo | `releases_2019_septiembre_licitacion.json`, 4 847 691 bytes |
+| Líneas | **28** |
+| Líneas con mojibake | 1 |
+| Fragmentos rotos | **1** — `TOPOGRÁFICO` como `TOPOGR` + `Ã` + `U+0081` |
+
+Un carácter roto en 4,8 MB da «3,6% de las líneas» porque un JSON de un mes son 28
+líneas de 170 KB. La misma corrupción daba 0,09% en un CSV de 1 070 líneas: el umbral se
+calibró contra CSV (D-013) y se aplicó a JSON sin volver a medirlo.
+
+**El tamaño del fichero no puede decidir si la fuente cambió de codificación.**
+
+**Decisión.** La alarma mide sobre el **texto acentuado**, que es el denominador que
+responde a la pregunta real: un cambio de codificación en origen rompe *todos* los
+acentos, no uno. Se añade además un suelo absoluto de 20 fragmentos, porque en un fichero
+con doce acentos uno roto es una errata de captura.
+
+`fraccion_lineas_afectadas` se conserva para el informe de cobertura, pero no decide.
+
+**Segundo defecto, del mismo fallo.** `publicar_mes` no capturaba `ErrorCodificacion`:
+la excepción subía y abortaba el rango entero. El fallo de un mes es información sobre
+ese mes, no sobre los quince siguientes. Ahora se anota como `degradado` y continúa —
+que es lo que ya hacía con `ErrorDescarga` y lo que manda `CLAUDE.md` §4.
+
+Cuatro pruebas nuevas, incluidas las dos direcciones: que un carácter roto en un JSON
+enorme **no** detenga, y que una fuente que cambia de codificación **sí**.
