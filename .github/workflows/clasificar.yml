@@ -1,0 +1,39 @@
+name: clasificar
+
+# Construye la taxonomia de categorias: embeddings + agrupamiento + el modelo bautiza
+# solo los grupos. Ver docs/decisiones.md D-006.
+#
+# Manual y semanal: la taxonomia debe ser estable entre ejecuciones, no cambiar a diario.
+on:
+  schedule:
+    - cron: "0 5 * * 0"      # domingos
+  workflow_dispatch:
+    inputs:
+      grupos:
+        description: "numero de categorias"
+        required: false
+        default: "400"
+
+jobs:
+  clasificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt scikit-learn numpy
+
+      - name: Construir taxonomia
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          DEEPINFRA_API_KEY: ${{ secrets.DEEPINFRA_API_KEY }}
+        run: python src/clasifica.py --construir --grupos "${{ inputs.grupos || 400 }}"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: taxonomia
+          path: taxonomia.json

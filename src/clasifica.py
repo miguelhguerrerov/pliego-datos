@@ -176,6 +176,49 @@ def construir_taxonomia(textos: list[str], n_grupos: int = N_CATEGORIAS) -> dict
     }
 
 
+def escribir(con, categorias: dict, asignacion: dict) -> tuple[int, int]:
+    """Guarda la taxonomia y asigna la categoria a cada proceso.
+
+    La asignacion se hace por el texto normalizado, no por ocid: dos procesos con el
+    mismo objeto contractual comparten categoria por construccion.
+    """
+    from carga import copiar
+
+    with con.cursor() as cur:
+        cur.execute("update proceso_resumen set categoria_id = null")
+        cur.execute("truncate categoria restart identity cascade")
+
+    filas = [(int(g) + 1, d["nombre"], d["n"]) for g, d in sorted(categorias.items())]
+    copiar(con, "categoria", ["id", "nombre", "n_procesos"], filas)
+
+    # Tabla temporal + un solo update: 280.000 updates fila a fila tardarian minutos.
+    with con.cursor() as cur:
+        cur.execute("create temp table asig (texto text primary key, cid int) on commit drop")
+    copiar(con, "asig", ["texto", "cid"],
+           [(t, int(g) + 1) for t, g in asignacion.items()])
+
+    with con.cursor() as cur:
+        cur.execute("create index on asig (texto)")
+        cur.execute("select ocid, objeto from proceso_resumen where objeto is not null")
+        pares = [(normalizar_texto(o), ocid) for ocid, o in cur.fetchall()]
+
+    with con.cursor() as cur:
+        cur.execute("create temp table ocid_texto (ocid text primary key, texto text) on commit drop")
+    copiar(con, "ocid_texto", ["ocid", "texto"], [(o, t) for t, o in pares if t])
+
+    with con.cursor() as cur:
+        cur.execute("""
+            update proceso_resumen p set categoria_id = a.cid
+            from ocid_texto ot join asig a on a.texto = ot.texto
+            where p.ocid = ot.ocid
+        """)
+        n = cur.rowcount
+        cur.execute("select count(*) from proceso_resumen where categoria_id is not null")
+        total = cur.fetchone()[0]
+    con.commit()
+    return len(filas), total
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Clasifica el objeto contractual")
     p.add_argument("--construir", action="store_true", help="taxonomía desde cero")
