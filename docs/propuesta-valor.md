@@ -52,11 +52,33 @@ El proveedor no dice que necesita inteligencia de mercado. Dice:
 | Lo que dice | Función que lo resuelve |
 |---|---|
 | «Me enteré tarde» | **Radar** — procesos en planificación y licitación, actualizados a diario |
-| «Oferté a ciegas, no sabía por cuánto bajar» | **Ratio de baja** por método y categoría |
+| «Oferté a ciegas, no sabía por cuánto bajar» | **Ratio de baja** por método y categoría, y la **mecánica de puja** en subasta inversa |
 | «Le vendo a los mismos tres de siempre» | **Compradores huérfanos** |
 | «No sé si estoy caro» | **Benchmark de precio unitario** |
+| «¿Dónde hay hueco?» | **Competencia escasa** — categorías y territorios donde los procesos competitivos atraen un solo oferente |
 
-Cuatro frases, cuatro funciones. El sitio se escribe con esas palabras, no con las nuestras.
+Cinco frases, cinco funciones. El sitio se escribe con esas palabras, no con las nuestras.
+
+### Competencia escasa: definición operativa
+
+Es la función que señala **dónde entrar**, no dónde defenderse, y por eso es la más
+vendible. También es la más fácil de convertir sin querer en una acusación, así que su
+definición es estricta:
+
+- **Solo métodos competitivos.** Contratación directa, bienes y servicios únicos y
+  comunicación social son de un solo oferente **por diseño**: incluirlos infla la cifra
+  sin decir nada. Medido en 2024, esos tres dan el 100%.
+- **La cifra real, en los que sí compiten:** menor cuantía 40,0%, cotización 26,2%,
+  **subasta inversa electrónica 19,9%** — uno de cada cinco procesos del método pensado
+  para que compitan atrajo un solo oferente.
+- **Con su `n` siempre visible.** `numberOfTenderers` solo viene en unos 7 886 de 55 000
+  procesos, el 14%. El indicador es real y se calcula sobre una parte.
+
+**Cómo se dice, y esto no es cosmética.** «Aquí hay poca competencia, es tu oportunidad»,
+nunca «aquí hay algo raro». Un proceso con un solo oferente casi nunca indica nada
+impropio: suele significar que la entidad está en una provincia remota, que el
+requerimiento es especializado, o que los proveedores no se enteraron — **que es
+literalmente el problema que este producto resuelve**. Invariante 12.
 
 ---
 
@@ -74,6 +96,11 @@ Cuatro frases, cuatro funciones. El sitio se escribe con esas palabras, no con l
 3. **La baja histórica por método**: 86,3% en licitación de seguros, 94,9% en licitación,
    95,1% en cotización, y **100,0% en menor cuantía y catálogo electrónico**. Saber en cuál
    compites cambia la oferta.
+4. **La mecánica de la puja**, que hasta ahora figuraba como hueco. La subasta inversa es
+   el método de mayor monto del país —24 060 procesos y 1 881 millones en 2024— y su
+   referencial no viene en el CSV. Sí en el JSON, junto con **cada puja con su fecha y su
+   valor**: unas 8 000 al mes. Permite responder no solo cuánto se baja, sino **cómo se
+   llega al precio final** — cuántas rondas, en qué momento entra el ganador.
 
 Esa tercera prueba es la más persuasiva porque es contraintuitiva: en la mitad de los métodos
 no hay baja alguna. Un proveedor que lo ignora está dejando margen sobre la mesa o perdiendo
