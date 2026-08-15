@@ -194,12 +194,26 @@ def test_el_segmento_objetivo_tiene_el_tamano_esperado(con):
     """El segmento objetivo son ~6.700 empresas entre 100 K y 2 M (D-004). Es el eje del
     modelo de negocio y la aplicación filtra por él.
 
-    Calcular el tramo sobre el año en curso —que va por agosto— lo dejaba en 2.694: más
-    de la mitad del mercado direccionable fuera de su propio segmento, sin ningún error.
-    Ver D-027."""
-    n = _uno(con, "select count(*) from entidad where tramo in ('100-500K','500K-2M')")
+    **Con su ventana**, como toda cifra de este proyecto (D-019): las 6.700 son las
+    empresas ACTIVAS en el último año completo, no las que alguna vez estuvieron en esa
+    banda en once años — que son 17.347 y no son mercado direccionable, porque una
+    empresa que dejó de contratar en 2017 no compra una suscripción.
+
+    Calcular el tramo sobre el año en curso —que va por agosto— dejaba el segmento en
+    2.694: más de la mitad fuera de su propio segmento, sin ningún error. Ver D-027."""
+    n = _uno(con, """
+        with base as (
+            select max(anio) as anio from entidad_ano
+            where rol='proveedor' and anio < extract(year from current_date)
+        )
+        select count(*)
+        from entidad e
+        join entidad_ano ea on ea.ruc = e.ruc and ea.rol = 'proveedor'
+        join base b on ea.anio = b.anio
+        where e.tramo in ('100-500K','500K-2M')
+    """)
     assert 4_500 <= n <= 9_000, (
-        f"el segmento objetivo tiene {n:,} empresas; se esperan unas 6.700. "
+        f"el segmento objetivo activo tiene {n:,} empresas; se esperan unas 6.700. "
         f"Si es la mitad, el tramo se está calculando sobre el año en curso (D-027)."
     )
 
