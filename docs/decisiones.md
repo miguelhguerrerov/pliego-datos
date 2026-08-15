@@ -523,3 +523,31 @@ gente verá.
 **Y una lección de espacio.** El `update` masivo que asigna categorías dejó casi 300 MB de
 tuplas muertas: la base pasó de 365 a **662 MB**, por encima del techo de 500. Hace falta
 `vacuum full` después de cualquier actualización masiva, y está incorporado al paso.
+
+---
+
+## D-022 · La ingesta diaria descategorizaba el radar cada mañana
+**2026-08-15**
+
+**Contexto.** Tras la primera ejecución programada sin intervención, los procesos
+clasificados bajaron de **266 794 a 262 244**.
+
+**Causa.** La ingesta hace `delete` + `copy` del mes para ser idempotente, así que las
+filas recargadas entran con `categoria_id` vacío. El trabajo diario recarga el mes en
+curso y el anterior — que son **exactamente los dos meses que alimentan el radar**.
+
+**Por qué importa.** El radar filtra oportunidades por la categoría del suscriptor. Sin
+categoría, los procesos más recientes no aparecen en ningún perfil. El producto se
+degradaba solo cada mañana, en su función principal, y sin ningún error visible: la
+ingesta terminaba con éxito y los agregados también.
+
+**Decisión.** Un paso `--pendientes` en el trabajo diario, después de la ingesta y antes
+de los agregados. Asigna categoría **por coincidencia de texto normalizado** contra lo ya
+clasificado, sin llamar a la API: los objetos contractuales se repiten mucho —2 786 textos
+únicos en 17 477 procesos— así que cubre la mayoría. Lo que no coincida espera a la
+reconstrucción semanal, que sí embebe.
+
+**Consecuencia de método.** Una operación idempotente que borra y reescribe **pierde todo
+lo que otros procesos añadieron a esas filas**. Al diseñar un `delete`+`copy` hay que
+preguntarse qué columnas las escribe alguien más — aquí, `categoria_id`. Es un fallo que
+ninguna prueba detecta porque cada pieza funciona bien por separado.

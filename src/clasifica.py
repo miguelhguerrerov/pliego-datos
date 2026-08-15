@@ -227,7 +227,17 @@ def main() -> int:
     p.add_argument("--salida", default="taxonomia.json")
     p.add_argument("--reusar", help="aplica una taxonomia ya construida (JSON + asignacion)")
     p.add_argument("--fusionar", action="store_true", help="fusiona categorias duplicadas")
+    p.add_argument("--pendientes", action="store_true", help="clasifica lo recargado por la ingesta")
     args = p.parse_args()
+
+    if args.pendientes:
+        from carga import conexion
+
+        with conexion() as con:
+            pend, asig = asignar_pendientes(con)
+        print(f"pendientes: {pend:,} · asignados por coincidencia: {asig:,} "
+              f"({100*asig/max(pend,1):.1f}%)")
+        return 0
 
     if args.fusionar:
         from carga import conexion
@@ -350,3 +360,45 @@ def fusionar(con, umbral: float = UMBRAL_FUSION) -> tuple[int, int]:
         cur.execute("commit")
         cur.execute("vacuum full proceso_resumen")
     return len(grupos), len(remapeo)
+
+
+def asignar_pendientes(con) -> tuple[int, int]:
+    """Asigna categoria a los procesos que no la tienen, por coincidencia de texto.
+
+    Existe porque la ingesta diaria hace borrado y copia del mes, asi que las filas
+    recargadas entran sin categoria. Sin este paso, los dos meses mas recientes se
+    quedan sin clasificar cada manana — y son justo los que alimentan el radar.
+    Ver docs/decisiones.md D-022.
+
+    No llama a la API: busca el texto normalizado entre los procesos ya clasificados.
+    Los objetos contractuales se repiten mucho (2.786 textos unicos en 17.477 procesos),
+    asi que cubre la mayoria. Lo que quede sin coincidencia espera a la reconstruccion
+    semanal, que si embebe.
+    """
+    with con.cursor() as cur:
+        cur.execute("select count(*) from proceso_resumen where categoria_id is null and objeto is not null")
+        pendientes = cur.fetchone()[0]
+        if not pendientes:
+            return 0, 0
+
+        # Diccionario texto -> categoria a partir de lo ya clasificado.
+        cur.execute("""select objeto, categoria_id from proceso_resumen
+                       where categoria_id is not null and objeto is not null""")
+        conocido: dict[str, int] = {}
+        for objeto, cid in cur.fetchall():
+            t = normalizar_texto(objeto)
+            if t:
+                conocido.setdefault(t, cid)
+
+        cur.execute("select ocid, objeto from proceso_resumen where categoria_id is null and objeto is not null")
+        asignaciones = []
+        for ocid, objeto in cur.fetchall():
+            cid = conocido.get(normalizar_texto(objeto))
+            if cid:
+                asignaciones.append((cid, ocid))
+
+    if asignaciones:
+        with con.cursor() as cur:
+            cur.executemany("update proceso_resumen set categoria_id=%s where ocid=%s", asignaciones)
+        con.commit()
+    return pendientes, len(asignaciones)

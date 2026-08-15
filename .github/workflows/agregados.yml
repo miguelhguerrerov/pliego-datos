@@ -17,6 +17,13 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
+      - name: Clasificar lo recargado por la ingesta
+        # La ingesta hace borrado y copia del mes: las filas nuevas entran sin
+        # categoria. Sin esto, los dos meses del radar se descategorizan cada dia.
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python src/clasifica.py --pendientes
+
       - name: Recalcular agregados
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
