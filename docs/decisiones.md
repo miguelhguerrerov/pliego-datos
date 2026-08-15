@@ -607,3 +607,40 @@ para el `VACUUM FULL`, después de que la transacción principal haya confirmado
 `CREATE INDEX CONCURRENTLY`, `REINDEX CONCURRENTLY`— no admiten transacción. Si el módulo
 de conexión abre siempre con transacción, hacen falta dos vías, y conviene que la segunda
 sea explícita y con nombre en vez de un apaño dentro de la primera.
+
+---
+
+## D-025 · RLS: la base estaba abierta de par en par
+**2026-08-15**
+
+**Contexto.** Antes de escribir la primera pantalla, auditoría del estado de seguridad:
+**las 16 tablas con RLS desactivado y cero políticas.**
+
+**Por qué era grave.** Supabase expone por API todo lo que vive en el esquema `public`, y
+la clave anónima va **incrustada en el JavaScript del navegador**. Sin RLS, cualquiera con
+esa clave podía leer y escribir la base entera: los suscriptores, la lista de espera, y
+`precio_cpc` — que es la función que se cobra. **El muro de pago habría sido decorativo**:
+el benchmark se habría podido descargar entero con una petición.
+
+**Decisión.** RLS en todas las tablas y la frontera del wireframe llevada al dato:
+
+- **Abierto:** `proceso_resumen`, `categoria`, `entidad_ano`, `baja_metodo`,
+  `mercado_cpc_prov`, `cobertura`. Es el canal de adquisición y lo que se indexa.
+- **Tras el muro:** `precio_cpc` y `relacion`, con política que comprueba plan activo
+  **por correo**, no por la UUID de `auth.users` (invariante 7).
+- **Solo lo suyo:** `suscriptor`, `perfil`, `envio_log`.
+- **Escritura anónima únicamente en `lista_espera`**, que es el mecanismo de conversión de
+  la fase 3: cualquiera se apunta, nadie la lee.
+- **Sin política:** `hecho_mes` y `entidad_nombre`, insumos de agregación que no son
+  producto. Solo los ve `service_role`, que salta RLS.
+
+**El enmascaramiento como frontera, no como cortesía.** El RUC de persona natural contiene
+la cédula. La vista `entidad_publica` lo enmascara y **el acceso directo a `entidad` queda
+negado**, así que el dato sin enmascarar no tiene ninguna vía hacia el navegador. No
+depende de que un componente se acuerde de ocultarlo.
+
+**Y una confirmación del método (regla 2.3).** La primera versión de la vista usaba
+`security_invoker`, que la ejecuta con los permisos de quien llama — y a `anon` se le había
+revocado el acceso a `entidad`, así que devolvía 401. **Mirar las políticas no lo habría
+detectado**: se detectó probando con la clave anónima real contra la API pública, que es
+el nivel donde el fallo ocurre.
