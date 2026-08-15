@@ -237,7 +237,8 @@ def agrupar_items(items: list[dict]) -> tuple[dict[str, Counter], dict[str, str]
     return descripciones, por_ocid
 
 
-def resolver_nombres(descripciones: dict[str, Counter], bautizador=bautizar) -> dict[str, str]:
+def resolver_nombres(descripciones: dict[str, Counter], bautizador=bautizar,
+                     ya_nombradas: dict[str, str] | None = None) -> dict[str, str]:
     """Un nombre por subclase, sin colisiones.
 
     Dos subclases distintas pueden recibir el mismo nombre corto —«Reactivos» para dos
@@ -245,7 +246,17 @@ def resolver_nombres(descripciones: dict[str, Counter], bautizador=bautizar) -> 
     mismo rótulo, que es justo el defecto que este módulo existe para eliminar. Cuando
     pasa, se desambigua con el código, que es lo único que de verdad las distingue.
     """
-    orden = sorted(descripciones, key=lambda g: -sum(descripciones[g].values()))
+    # Una categoria que ya tiene nombre lo conserva. Sin esto cada pasada gastaba 350
+    # llamadas al modelo por gusto y, peor, el rotulo de una categoria podia cambiar bajo
+    # los pies del usuario entre dos noches.
+    ya_nombradas = ya_nombradas or {}
+    orden = sorted(
+        (g for g in descripciones if g not in ya_nombradas),
+        key=lambda g: -sum(descripciones[g].values()),
+    )
+    if ya_nombradas:
+        print(f"  {len(ya_nombradas):,} categorias conservan su nombre; "
+              f"se nombran {len(orden):,} nuevas")
 
     # En paralelo: son ~350 llamadas independientes y en serie tardaban 35 minutos, que
     # es tiempo en el que algo se cae y hay que repetirlo entero. El orden del resultado
@@ -255,8 +266,8 @@ def resolver_nombres(descripciones: dict[str, Counter], bautizador=bautizar) -> 
     with ThreadPoolExecutor(max_workers=8) as pool:
         propuestos = list(pool.map(lambda g: bautizador(g, descripciones[g]), orden))
 
-    nombres: dict[str, str] = {}
-    vistos: dict[str, str] = {}
+    nombres: dict[str, str] = dict(ya_nombradas)
+    vistos: dict[str, str] = {_clave_normalizada(n): g for g, n in ya_nombradas.items()}
     for grupo, nombre in zip(orden, propuestos):
         clave = _clave_normalizada(nombre)
         if clave in vistos:
@@ -348,8 +359,17 @@ def main() -> int:
     cpc_completo = {o: c for o, (c, _) in cpc_dominante(items).items()}
     print(f"subclases CPC: {len(descripciones):,}  ·  procesos con categoría: {len(por_ocid):,}")
 
+    # Las que ya tienen nombre se leen ANTES de nombrar: nombrar y descartar despues es
+    # pagar 350 llamadas para tirarlas.
+    ya = {}
+    if not args.seco:
+        from carga import conexion as _con
+        with _con() as c, c.cursor() as cur:
+            cur.execute("select cpc, nombre from categoria where cpc is not null")
+            ya = dict(cur.fetchall())
+
     bautizador = (lambda g, d: nombre_de_respaldo(d)) if args.sin_modelo else bautizar
-    nombres = resolver_nombres(descripciones, bautizador=bautizador)
+    nombres = resolver_nombres(descripciones, bautizador=bautizador, ya_nombradas=ya)
 
     grandes = sorted(descripciones, key=lambda g: -sum(descripciones[g].values()))
     print("\nlas 15 subclases con más ítems:")

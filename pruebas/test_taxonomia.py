@@ -165,3 +165,22 @@ def test_agrupar_devuelve_categoria_para_cada_proceso_con_items():
     assert por_ocid == {"a": "35260", "b": "87141"}
     assert set(descripciones) == {"35260", "87141"}
     assert "c" not in por_ocid, "un proceso sin CPC no debe recibir categoría inventada"
+
+
+def test_una_categoria_que_ya_tiene_nombre_lo_conserva():
+    """Dos motivos, y el segundo importa más que el coste: renombrar cada noche gastaba
+    350 llamadas al modelo por gusto, y hacía que el rótulo de una categoría cambiara
+    bajo los pies del usuario entre dos ejecuciones."""
+    llamadas = []
+
+    def bautizador(g, d):
+        llamadas.append(g)
+        return "Inventado"
+
+    nombres = resolver_nombres(
+        {"35260": Counter({"MEDICAMENTOS": 5}), "87141": Counter({"MANTENIMIENTO": 3})},
+        bautizador=bautizador,
+        ya_nombradas={"35260": "Medicamentos"},
+    )
+    assert llamadas == ["87141"], f"solo debía nombrarse la nueva, y se llamó a {llamadas}"
+    assert nombres["35260"] == "Medicamentos"
