@@ -26,7 +26,9 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -r requirements.txt
+      # numpy lo usa la asignacion por cercania. Estaba solo en clasificar.yml,
+      # asi que el paso fallo al final, despues de 37 minutos de trabajo bueno.
+      - run: pip install -r requirements.txt numpy
 
       - name: Construir taxonomia y recategorizar
         env:
