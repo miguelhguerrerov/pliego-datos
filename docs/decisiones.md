@@ -676,3 +676,37 @@ para tirarlas, que es justo lo que consume el egress de 5 GB del plan gratuito.
 Añadir a las trampas del `CLAUDE.md`: **cualquier `sum`, `count` o `avg` hecho en
 JavaScript sobre datos de Supabase está mal por defecto.** Si el resultado cabe en una
 fila, es una vista.
+
+## D-027 — El tramo se calcula sobre el último año completo
+
+**14 de agosto de 2026.**
+
+`construir_entidad()` tomaba el tramo del **último año con actividad**. Para casi todos los
+proveedores vivos ese año es 2026, que va por agosto y con datos aún sin cerrar. Resultado:
+el tamaño de la empresa se medía con dos tercios de año.
+
+PLASTILIMPIO S.A. facturó **7 279 531 USD en 2025** y aparecía en el tramo `500K-2M` por sus
+824 145 USD de 2026.
+
+Alcance medido sobre los datos cargados:
+
+| | |
+|---|---|
+| Proveedores con actividad en 2025 o 2026 | 20 004 |
+| Clasificados distinto según el año que se use | **3 198** |
+| Sin actividad en 2026 → tramo viejo o ausente | 10 336 |
+| Segmento objetivo (100K–2M) con 2026 | 2 694 |
+| Segmento objetivo (100K–2M) con 2025 | **5 928** |
+
+El segmento objetivo es el eje del modelo de negocio (D-004: 6 697 empresas en la banda
+100K–2M) y la aplicación filtra por él. Con el defecto, **más de la mitad del mercado
+direccionable quedaba fuera de su propio segmento**.
+
+**Decisión.** El tramo sale del último año **anterior al año en curso**. Si un proveedor solo
+tiene actividad en el año en curso —es decir, entró al mercado este año— se usa ese, porque
+clasificarlo mal es mejor que dejarlo sin tramo y fuera de todo segmento.
+
+Es el mismo principio que D-009 y el invariante 10: **un periodo sin cerrar no sostiene una
+estadística**. La regla existía para los meses y no se había aplicado a los años.
+
+Dos pruebas en `pruebas/test_agregados.py` lo fijan, una por cada rama.

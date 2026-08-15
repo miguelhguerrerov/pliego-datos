@@ -167,3 +167,36 @@ def test_clasifica_expone_sus_funciones():
         "el guard if __name__ no es lo ultimo del archivo: las funciones definidas "
         "despues no existiran cuando main() las llame"
     )
+
+
+def test_el_tramo_usa_el_ultimo_anio_completo():
+    """El anio en curso va a medias: clasificar con el subestima el tamano.
+
+    PLASTILIMPIO facturo 7,28 M en 2025 y aparecia como '500K-2M' por sus 824 mil de
+    2026 hasta agosto. El segmento objetivo pasaba de 5.928 empresas a 2.694.
+    Ver docs/decisiones.md D-027.
+    """
+    import datetime as dt
+
+    from agrega import construir_entidad
+
+    en_curso = dt.date.today().year
+    filas = {f[0]: f for f in construir_entidad([
+        ("1791240502001", en_curso - 1, "proveedor", 7_280_000, 1586, 676),
+        ("1791240502001", en_curso,     "proveedor",   824_000,  182, 148),
+    ], [])}
+    assert filas["1791240502001"][7] == "2-10M", (
+        "el tramo debe salir del ultimo anio completo, no del que va a medias"
+    )
+
+
+def test_proveedor_solo_del_anio_en_curso_no_se_queda_sin_tramo():
+    """Un proveedor nuevo no tiene anio completo: se usa el que hay, que es mejor que
+    dejarlo sin clasificar y fuera de todo segmento."""
+    import datetime as dt
+
+    from agrega import construir_entidad
+
+    filas = construir_entidad(
+        [("0925051385001", dt.date.today().year, "proveedor", 300_000, 12, 4)], [])
+    assert filas[0][7] == "100-500K"

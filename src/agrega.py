@@ -140,14 +140,26 @@ def construir_entidad(entidad_ano: list[tuple], nombres: list[tuple]) -> list[tu
         if ruc not in mejor or n > mejor[ruc][0]:
             mejor[ruc] = (n, nombre)
 
+    # El tramo se calcula sobre el ultimo anio COMPLETO. Usar el anio en curso —que va
+    # por agosto— subestimaba a la mitad de los proveedores: PLASTILIMPIO facturo 7,28 M
+    # en 2025 y aparecia como "500K-2M" por sus 824 mil de 2026. El segmento objetivo
+    # pasaba de 5.928 empresas a 2.694. Ver docs/decisiones.md D-027.
+    anio_en_curso = dt.date.today().year
+
     roles: dict[str, set] = {}
     ultimo: dict[str, tuple[int, float]] = {}
-    anios: dict[str, list] = {}
+    respaldo: dict[str, tuple[int, float]] = {}   # por si solo hay anio en curso
     for ruc, anio, rol, monto, _n, _c in entidad_ano:
         roles.setdefault(ruc, set()).add(rol)
-        anios.setdefault(ruc, []).append(anio)
-        if rol == "proveedor" and (ruc not in ultimo or anio > ultimo[ruc][0]):
-            ultimo[ruc] = (anio, float(monto))
+        if rol != "proveedor":
+            continue
+        if anio < anio_en_curso:
+            if ruc not in ultimo or anio > ultimo[ruc][0]:
+                ultimo[ruc] = (anio, float(monto))
+        elif ruc not in respaldo or anio > respaldo[ruc][0]:
+            respaldo[ruc] = (anio, float(monto))
+    for ruc, valor in respaldo.items():
+        ultimo.setdefault(ruc, valor)   # proveedor nuevo: no hay anio completo todavia
 
     filas = []
     for ruc, rs in roles.items():
