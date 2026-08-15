@@ -580,3 +580,30 @@ funciones son alcanzables, y que **el archivo termina en el guard**.
 **Consecuencia de método.** Añadir código al final de un archivo con `append` es seguro en
 un módulo sin guard y peligroso en uno con él. Es el tercer fallo de la sesión causado por
 editar a ciegas en vez de con la herramienta de edición, que habría exigido decir dónde.
+
+---
+
+## D-024 · `VACUUM` no cabe dentro de una transacción
+**2026-08-15**
+
+**Contexto.** La fusión de categorías falló con
+`psycopg.errors.ActiveSqlTransaction: VACUUM cannot run inside a transaction block`.
+
+**Matiz importante: la fusión sí se aplicó.** 400 categorías pasaron a 242, con cero
+nombres duplicados y cero procesos apuntando a una categoría inexistente. Lo único que
+no ocurrió fue la recuperación de espacio. Conviene decirlo porque el flujo aparece en
+rojo y el dato estaba bien: **un fallo al final no invalida lo anterior**, y saber cuál de
+las dos cosas pasó es la diferencia entre repetir el trabajo o no.
+
+**Causa.** `carga.conexion()` abre con `autocommit=False`, así que todo va dentro de una
+transacción. Intenté sortearlo con `cur.execute("commit")`, que no es la forma de cerrar
+una transacción en psycopg3 y dejó la conexión igualmente en estado transaccional.
+
+**Decisión.** Una función `compactar()` que abre **su propia conexión con autocommit**
+para el `VACUUM FULL`, después de que la transacción principal haya confirmado con
+`con.commit()`.
+
+**Consecuencia de método.** Las operaciones de mantenimiento de PostgreSQL —`VACUUM`,
+`CREATE INDEX CONCURRENTLY`, `REINDEX CONCURRENTLY`— no admiten transacción. Si el módulo
+de conexión abre siempre con transacción, hacen falta dos vías, y conviene que la segunda
+sea explícita y con nombre en vez de un apaño dentro de la primera.

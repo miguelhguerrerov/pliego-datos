@@ -352,10 +352,27 @@ def fusionar(con, umbral: float = UMBRAL_FUSION) -> tuple[int, int]:
                     ([o for o, _ in remapeo],))
         cur.execute("""update categoria c set n_procesos =
                        (select count(*) from proceso_resumen p where p.categoria_id = c.id)""")
-        # El update masivo deja tuplas muertas: sin esto la base crecio de 365 a 662 MB.
-        cur.execute("commit")
-        cur.execute("vacuum full proceso_resumen")
+    con.commit()
+    compactar("proceso_resumen")
     return len(grupos), len(remapeo)
+
+
+def compactar(*tablas: str) -> None:
+    """Recupera el espacio de las tuplas muertas que deja un update masivo.
+
+    Va en su propia conexion con autocommit porque **VACUUM no puede correr dentro de
+    una transaccion**, y `carga.conexion()` abre con transaccion. Sin esto la base
+    crecio de 365 a 662 MB, por encima del techo de 500 del plan gratuito.
+    Ver docs/decisiones.md D-021 y D-024.
+    """
+    import psycopg
+
+    from carga import url_conexion
+
+    with psycopg.connect(url_conexion(), autocommit=True) as con, con.cursor() as cur:
+        for tabla in tablas:
+            cur.execute(f"vacuum full {tabla}")
+            print(f"    compactada {tabla}")
 
 
 def asignar_pendientes(con) -> tuple[int, int]:
