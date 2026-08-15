@@ -131,7 +131,14 @@ def construir_entidad(entidad_ano: list[tuple], nombres: list[tuple]) -> list[tu
     - nombre por MODA, no por el ultimo visto (los registros antiguos tienen mas erratas)
     - tipo segun aparezca como comprador, proveedor o ambos
     - persona natural y provincia derivados del propio RUC
-    - tramo calculado sobre el ultimo anio con actividad
+    - tramo y cifras de cabecera sobre el ultimo anio COMPLETO de cada uno
+
+    **Las cifras de cabecera viven aqui y no en una vista.** La primera version las
+    calculaba en `v_proveedor` con ventanas sobre las 264.276 filas de `entidad_ano`:
+    salia a 0,85 s por ficha, y ordenar por monto —lo que necesita el buscador— daba
+    directamente «canceling statement due to statement timeout». Precalcularlas cuesta
+    unos 2 MB del presupuesto de 460 y las deja indexables. Es la misma regla de siempre:
+    los agregados se calculan una vez y la aplicacion los lee.
     """
     from entidades import es_entidad_publica, es_persona_natural, provincia_de_ruc
 
@@ -140,31 +147,44 @@ def construir_entidad(entidad_ano: list[tuple], nombres: list[tuple]) -> list[tu
         if ruc not in mejor or n > mejor[ruc][0]:
             mejor[ruc] = (n, nombre)
 
-    # El tramo se calcula sobre el ultimo anio COMPLETO. Usar el anio en curso —que va
-    # por agosto— subestimaba a la mitad de los proveedores: PLASTILIMPIO facturo 7,28 M
-    # en 2025 y aparecia como "500K-2M" por sus 824 mil de 2026. El segmento objetivo
-    # pasaba de 5.928 empresas a 2.694. Ver docs/decisiones.md D-027.
+    # El anio en curso va a medias: clasificar el tamano de una empresa con el la
+    # subestima. PLASTILIMPIO facturo 7,28 M en 2025 y aparecia como "500K-2M" por sus
+    # 824 mil de 2026; el segmento objetivo pasaba de 5.928 empresas a 2.694. Ver D-027.
     anio_en_curso = dt.date.today().year
 
     roles: dict[str, set] = {}
-    ultimo: dict[str, tuple[int, float]] = {}
-    respaldo: dict[str, tuple[int, float]] = {}   # por si solo hay anio en curso
-    for ruc, anio, rol, monto, _n, _c in entidad_ano:
+    base: dict[str, tuple] = {}        # ultimo anio completo de cada uno
+    respaldo: dict[str, tuple] = {}    # solo si no tiene ningun anio completo
+    historico: dict[str, list] = {}    # [monto, procesos, primer_anio, ultimo, n_anios]
+    for ruc, anio, rol, monto, n_proc, n_contra in entidad_ano:
         roles.setdefault(ruc, set()).add(rol)
         if rol != "proveedor":
             continue
-        if anio < anio_en_curso:
-            if ruc not in ultimo or anio > ultimo[ruc][0]:
-                ultimo[ruc] = (anio, float(monto))
-        elif ruc not in respaldo or anio > respaldo[ruc][0]:
-            respaldo[ruc] = (anio, float(monto))
-    for ruc, valor in respaldo.items():
-        ultimo.setdefault(ruc, valor)   # proveedor nuevo: no hay anio completo todavia
+
+        h = historico.setdefault(ruc, [0.0, 0, anio, anio, 0])
+        h[0] += float(monto)
+        h[1] += int(n_proc or 0)
+        h[2] = min(h[2], anio)
+        h[3] = max(h[3], anio)
+        h[4] += 1
+
+        fila = (anio, float(monto), int(n_proc or 0), int(n_contra or 0))
+        destino = base if anio < anio_en_curso else respaldo
+        if ruc not in destino or anio > destino[ruc][0]:
+            destino[ruc] = fila
+    for ruc, fila in respaldo.items():
+        base.setdefault(ruc, fila)     # proveedor nuevo: no hay anio completo todavia
+
+    # La cohorte de comparacion del buscador y de la ficha: el ultimo anio cerrado del
+    # conjunto. Quien no llega a el sigue teniendo cifras, pero marcadas como viejas.
+    anio_cohorte = max((b[0] for b in base.values()), default=anio_en_curso - 1)
 
     filas = []
     for ruc, rs in roles.items():
         tipo = "ambos" if len(rs) > 1 else next(iter(rs))
-        monto = ultimo.get(ruc, (0, 0.0))[1]
+        es_prov = tipo in ("proveedor", "ambos")
+        anio_b, monto_b, proc_b, comp_b = base.get(ruc, (None, 0.0, 0, 0))
+        h = historico.get(ruc)
         filas.append((
             ruc,
             mejor.get(ruc, (0, ruc))[1],
@@ -172,10 +192,18 @@ def construir_entidad(entidad_ano: list[tuple], nombres: list[tuple]) -> list[tu
             es_persona_natural(ruc),
             es_entidad_publica(ruc),
             provincia_de_ruc(ruc),
-            None,
-            tramo_de(monto) if tipo in ("proveedor", "ambos") else None,
-            None,
-            None,
+            None,                                        # canton: falta en la fuente CSV
+            tramo_de(monto_b) if es_prov else None,
+            anio_b,
+            round(monto_b, 2) if es_prov else None,
+            proc_b if es_prov else None,
+            comp_b if es_prov else None,
+            anio_b == anio_cohorte if es_prov else None,
+            round(h[0], 2) if h else None,
+            h[1] if h else None,
+            h[2] if h else None,
+            h[3] if h else None,
+            h[4] if h else None,
         ))
     return filas
 
@@ -220,7 +248,10 @@ def main() -> int:
             "relacion": ["comprador_ruc", "proveedor_ruc", "anio", "monto", "n_procesos"],
             "baja_metodo": ["metodo", "anio", "n", "ratio_mediana", "ratio_p25", "ratio_p75"],
             "entidad": ["ruc", "nombre", "tipo", "es_persona_natural", "es_publica",
-                        "provincia", "canton", "tramo", "activa_desde", "activa_hasta"],
+                        "provincia", "canton", "tramo",
+                        "anio_base", "monto_base", "procesos_base", "compradores_base",
+                        "activo", "monto_total", "procesos_total", "primer_anio",
+                        "ultimo_anio", "anios_activo"],
         }
         # entidad primero: las demas no la referencian, pero el orden hace el log legible.
         for nombre, filas in tablas.items():

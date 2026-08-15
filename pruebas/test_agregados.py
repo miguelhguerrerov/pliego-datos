@@ -200,3 +200,52 @@ def test_proveedor_solo_del_anio_en_curso_no_se_queda_sin_tramo():
     filas = construir_entidad(
         [("0925051385001", dt.date.today().year, "proveedor", 300_000, 12, 4)], [])
     assert filas[0][7] == "100-500K"
+
+
+def test_las_filas_de_entidad_calzan_con_sus_columnas():
+    """`construir_entidad` devuelve tuplas y `main()` las carga contra una lista de
+    nombres de columna escrita aparte. Si una crece y la otra no, el desajuste solo
+    aparece al cargar en produccion — y con suerte, porque una tupla mas corta encaja
+    igual si las columnas sobrantes admiten nulos."""
+    import datetime as dt
+    import re
+    from pathlib import Path
+
+    from agrega import construir_entidad
+
+    fuente = (Path(__file__).resolve().parents[1] / "src" / "agrega.py").read_text(
+        encoding="utf-8")
+    bloque = re.search(r'"entidad": \[(.*?)\],\n\s*\}', fuente, re.S)
+    assert bloque, "no se encontro la lista de columnas de entidad en agrega.py"
+    columnas = re.findall(r'"(\w+)"', bloque.group(1))
+
+    filas = construir_entidad(
+        [("0991284214001", dt.date.today().year - 1, "proveedor", 500_000, 20, 8)], [])
+    assert len(filas[0]) == len(columnas), (
+        f"construir_entidad devuelve {len(filas[0])} valores y se cargan "
+        f"{len(columnas)} columnas: {columnas}"
+    )
+
+
+def test_las_cifras_de_cabecera_salen_del_anio_completo():
+    """La ficha y el buscador leen estas cifras de `entidad`, no de una vista: el
+    calculo al vuelo costaba 0,85 s por ficha y expiraba al ordenar."""
+    import datetime as dt
+
+    from agrega import construir_entidad
+
+    completo = dt.date.today().year - 1
+    fila = construir_entidad([
+        ("1791240502001", completo,     "proveedor", 7_280_000, 1586, 676),
+        ("1791240502001", completo + 1, "proveedor",   824_000,  182, 148),
+        ("1791240502001", completo - 3, "proveedor", 3_000_000,  900, 400),
+    ], [])[0]
+
+    assert fila[7] == "2-10M"          # tramo
+    assert fila[8] == completo         # anio_base: el ultimo COMPLETO
+    assert float(fila[9]) == 7_280_000  # monto_base, no el del anio a medias
+    assert fila[11] == 676             # compradores_base
+    assert fila[12] is True            # activo
+    assert float(fila[13]) == 11_104_000  # monto_total: los tres anios
+    assert fila[15] == completo - 3    # primer_anio
+    assert fila[17] == 3               # anios_activo
