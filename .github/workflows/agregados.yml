@@ -35,3 +35,11 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: python -m pytest pruebas/test_presupuesto.py -q
+
+      - name: Consultas de producto
+        # Las consultas que haria un usuario, como aserciones. Cuatro de los
+        # catorce fallos de la fase 1 terminaron en verde con el dato mal:
+        # las pruebas verificaban funciones, no resultados. Ver docs/metodo.md.
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python -m pytest pruebas/test_producto.py -q

@@ -61,6 +61,34 @@ Cosas que parecen buena idea al empezar una sesión en frío y no lo son.
 
 ---
 
+## 2b. Cómo se verifica
+
+Siete reglas destiladas de los catorce fallos de la fase 1. El detalle y qué caso atrapó
+cada una están en `docs/metodo.md`.
+
+**El dato que las ordena: cuatro de los catorce fallos no produjeron ningún error.** El
+trabajo terminó en verde, las 36 pruebas pasaron, y el dato estaba mal — porque las
+pruebas verificaban funciones y el fallo estaba en el resultado.
+
+1. **Una consulta de producto tras cada carga.** No «la tabla tiene filas», sino «el radar
+   devuelve oportunidades con monto». Está en `pruebas/test_producto.py` y sola cubre
+   cuatro de los catorce.
+2. **Cardinalidad de entrada y salida en cada transformación.** `17 473 → 15` tenía que
+   gritar. Falla si la proporción es extrema.
+3. **Verificar en el nivel donde ocurre el fallo.** Si falla como programa, pruébalo como
+   programa; si el problema son bytes, mira bytes. La consola de Windows miente.
+4. **Medir antes de rebajar un invariante.** La intuición sobre costes se equivocó en un
+   orden de magnitud en las dos direcciones: 4 MB que parecían caros, 173 MB que parecían
+   inocuos.
+5. **Toda alarma necesita una prueba de falso positivo.** Una advertencia que salta sin
+   motivo entrena a ignorarla y destruye el valor de las verdaderas.
+6. **Nunca editar a ciegas.** Sustituir texto por programa falla en silencio; usar la
+   herramienta de edición o comprobar con `assert` después.
+7. **Verificar el estado antes de reaccionar a un fallo.** Un fallo al final no invalida
+   lo anterior: la fusión se aplicó entera y el flujo salió en rojo.
+
+---
+
 ## 3. Hechos verificados
 
 Medidos contra la fuente el 14 de agosto de 2026. **No recalcular**: están aquí para no repetir
