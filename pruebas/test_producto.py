@@ -305,3 +305,25 @@ def test_solo_los_activos_tienen_puesto(con):
     mal = _uno(con,
                "select count(*) from v_proveedor where not activo and puesto_tramo is not null")
     assert mal == 0, f"{mal} fichas inactivas traen puesto en el tramo actual"
+
+
+def test_la_ficha_de_comprador_devuelve_datos(con):
+    """El espejo de la de proveedor, sin muro: quien compra no paga, atrae. Una vista que
+    existe y devuelve cero filas se despliega en verde."""
+    n = _uno(con, "select count(*) from v_comprador")
+    assert n > 3_000, f"v_comprador devuelve {n} filas; se esperan miles de entidades"
+
+    vacias = _uno(con, "select count(*) from v_comprador where monto_base is null")
+    assert vacias / n < 0.05, (
+        f"{vacias:,} de {n:,} fichas de comprador no tienen cifras de cabecera. "
+        f"El año base debe ser el de cada entidad, no uno global (ver la 0011)."
+    )
+
+
+def test_la_ficha_de_comprador_no_expone_personas_naturales(con):
+    """Invariante 9, igual que en la de proveedor."""
+    n = _uno(con, """
+        select count(*) from v_comprador v
+        join entidad e on e.ruc = v.ruc where e.es_persona_natural
+    """)
+    assert n == 0, f"{n} personas naturales tienen ficha de comprador"
