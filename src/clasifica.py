@@ -226,7 +226,16 @@ def main() -> int:
     p.add_argument("--grupos", type=int, default=N_CATEGORIAS)
     p.add_argument("--salida", default="taxonomia.json")
     p.add_argument("--reusar", help="aplica una taxonomia ya construida (JSON + asignacion)")
+    p.add_argument("--fusionar", action="store_true", help="fusiona categorias duplicadas")
     args = p.parse_args()
+
+    if args.fusionar:
+        from carga import conexion
+
+        with conexion() as con:
+            n, fus = fusionar(con)
+        print(f"categorías tras fusionar: {n} · {fus} absorbidas")
+        return 0
 
     if not args.construir:
         p.print_help()
@@ -265,3 +274,79 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+# --- fusion de categorias duplicadas -------------------------------------------
+
+UMBRAL_FUSION = 0.92
+
+
+def fusionar(con, umbral: float = UMBRAL_FUSION) -> tuple[int, int]:
+    """Fusiona categorias que nombran lo mismo.
+
+    El agrupamiento produce grupos semanticamente adyacentes que el modelo bautiza
+    igual o casi: medido sobre la primera taxonomia, 400 grupos dieron solo 257
+    nombres distintos, y "Material de oficina" quedo partido en siete grupos con
+    28.114 procesos entre todos.
+
+    Eso rompe el producto: un benchmark repartido entre siete categorias que son la
+    misma da medianas calculadas sobre un septimo de las observaciones.
+
+    Se fusiona por similitud de los NOMBRES, no de los textos: son 400 embeddings en
+    vez de 50.000. Ver docs/decisiones.md D-021.
+    """
+    import numpy as np
+
+    with con.cursor() as cur:
+        cur.execute("""select c.id, c.nombre, count(p.ocid) n
+                       from categoria c left join proceso_resumen p on p.categoria_id = c.id
+                       group by 1, 2 order by 3 desc""")
+        cats = cur.fetchall()
+    if not cats:
+        return 0, 0
+
+    ids = [c[0] for c in cats]
+    nombres = [c[1] for c in cats]
+    pesos = [c[2] for c in cats]
+
+    V = np.asarray(embeber(nombres), dtype="float32")
+    V /= np.linalg.norm(V, axis=1, keepdims=True) + 1e-9
+    S = V @ V.T
+    np.fill_diagonal(S, 0.0)
+
+    padre = list(range(len(ids)))
+
+    def raiz(i: int) -> int:
+        while padre[i] != i:
+            padre[i] = padre[padre[i]]
+            i = padre[i]
+        return i
+
+    for i, j in zip(*np.where(np.triu(S, 1) >= umbral)):
+        a, b = raiz(int(i)), raiz(int(j))
+        if a != b:
+            # El representante es el grupo con mas procesos: su nombre es el que
+            # mas gente vera, asi que conviene que sea el mas representativo.
+            padre[max(a, b, key=lambda k: -pesos[k])] = min(a, b, key=lambda k: -pesos[k])
+
+    grupos: dict[int, list[int]] = {}
+    for i in range(len(ids)):
+        grupos.setdefault(raiz(i), []).append(i)
+
+    remapeo = [(ids[i], ids[r]) for r, miembros in grupos.items() for i in miembros if i != r]
+    if not remapeo:
+        return len(grupos), 0
+
+    with con.cursor() as cur:
+        cur.executemany(
+            "update proceso_resumen set categoria_id=%s where categoria_id=%s",
+            [(destino, origen) for origen, destino in remapeo],
+        )
+        cur.execute("delete from categoria where id = any(%s)",
+                    ([o for o, _ in remapeo],))
+        cur.execute("""update categoria c set n_procesos =
+                       (select count(*) from proceso_resumen p where p.categoria_id = c.id)""")
+        # El update masivo deja tuplas muertas: sin esto la base crecio de 365 a 662 MB.
+        cur.execute("commit")
+        cur.execute("vacuum full proceso_resumen")
+    return len(grupos), len(remapeo)

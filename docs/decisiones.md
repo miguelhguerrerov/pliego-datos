@@ -490,3 +490,36 @@ no es ruido inocuo: destruye el valor de los avisos verdaderos.
 lleva su registro en `cobertura` desde el principio; la JSON no llevaba ninguno, así que
 un mes con métodos realmente fallidos quedaba publicado y en silencio. Se añade
 `cobertura_parquet` (migración 0006).
+
+---
+
+## D-021 · Fusionar categorías que nombran lo mismo
+**2026-08-14**
+
+**Contexto.** La primera taxonomía dio 400 grupos y **solo 257 nombres distintos**. Las
+categorías con más procesos eran variantes de la misma cosa:
+
+- «Material de oficina» partido en **7 grupos**, 28 114 procesos entre todos.
+- «Toner para impresora» en **13 grupos**.
+- «Productos de limpieza» en 5, «Medicamentos» en 9.
+
+**Por qué rompe el producto.** El benchmark de precio se calcula por categoría. Repartida
+entre siete, cada mediana sale sobre un séptimo de las observaciones — y el umbral de
+`n < 5` empieza a ocultar categorías que en realidad tienen miles de procesos. El
+tamaño de mercado por sector queda igualmente partido.
+
+**Causa.** Con 400 grupos sobre ~50 000 textos únicos, el agrupamiento produce grupos
+semánticamente adyacentes y el modelo los bautiza igual. No es un fallo del modelo: es que
+400 es más granularidad de la que el dominio tiene.
+
+**Decisión.** Un paso de fusión posterior que agrupa categorías por **similitud de sus
+nombres**, con umbral de 0,92 de coseno. Quedan **242 categorías**. Se fusiona por el
+nombre y no por los textos porque son 400 embeddings en vez de 50 000, y el nombre ya
+condensa el significado del grupo.
+
+El representante de cada fusión es **el grupo con más procesos**: su nombre es el que más
+gente verá.
+
+**Y una lección de espacio.** El `update` masivo que asigna categorías dejó casi 300 MB de
+tuplas muertas: la base pasó de 365 a **662 MB**, por encima del techo de 500. Hace falta
+`vacuum full` después de cualquier actualización masiva, y está incorporado al paso.
