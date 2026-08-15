@@ -13,6 +13,10 @@ on:
         description: "numero de categorias"
         required: false
         default: "400"
+      solo_fusionar:
+        description: "fusionar sin reconstruir la taxonomia"
+        required: false
+        default: "false"
 
 jobs:
   clasificar:
@@ -27,6 +31,7 @@ jobs:
       - run: pip install -r requirements.txt scikit-learn numpy
 
       - name: Construir taxonomia
+        if: inputs.solo_fusionar != 'true'
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           DEEPINFRA_API_KEY: ${{ secrets.DEEPINFRA_API_KEY }}

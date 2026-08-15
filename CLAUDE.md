@@ -246,56 +246,47 @@ correspondiente**, no después.
 
 ---
 
-## 9. Estado actual
+## 9. Estado actual — 15 de agosto de 2026
 
-**Nada construido todavía.** Los catorce documentos están escritos y la infraestructura
-verificada contra las API con credenciales reales.
+**La fase 1 esta terminada y corriendo sola.** Los flujos programados se disparan sin
+intervencion: ingesta a las 09:30 UTC y agregados a las 09:48, ambos verdes.
 
-| Servicio | Estado |
+| Pieza | Estado |
 |---|---|
-| GitHub | Listo. **El token caduca el 13 de septiembre de 2026** |
-| Supabase | Cuenta MVP con 2 cupos libres, organización `miguelhguerrerov@gmail.com`. Proyecto sin crear |
-| Vercel | Listo, plan Hobby. Pro obligatorio al activar cobro (los términos prohíben uso comercial) |
-| Resend | `darkmelon.com` verificado con DKIM y SPF. **Falta DMARC.** Cuota compartida con otros proyectos |
-| DeepInfra | **Verificado.** `BAAI/bge-m3` (1024 dim) y `Llama-3.3-70B-Instruct-Turbo` responden |
-| Dominio | `pliego.ec` disponible, 35 USD/año. **Por registrar** |
+| Repositorios | `pliego-datos` publico con el pipeline; `pliego-app` privado y **vacio** |
+| Supabase | Proyecto `pliego`, ref `ioxnmaxwbcnfomuenyrq`, us-east-1. Migraciones 0001-0006 aplicadas |
+| Historico | **140 de 140 meses.** 2.774.263 procesos frente a 2.774.265 de la API |
+| Agregados | 77.693 entidades · 264.276 entidad_ano · 168.151 relaciones · 256 baja_metodo |
+| Taxonomia | 400 categorias, 262.244 procesos clasificados |
+| Parquet | Solo 2026-07 y 2026-08 publicados. **138 meses pendientes** |
+| Espacio | 379 MB de 460 presupuestados |
+| Pruebas | 36, verdes |
 
-**Medido en DeepInfra:** 39 tokens de entrada y 5 de salida costaron 0,0000055 USD en Llama 3.3
-70B. Separación semántica en español comprobada: «suero antiofídico» contra «medicamentos» da
-0,663; contra «vía asfaltada», 0,477. A ~30 tokens por objeto contractual, embeber los 2,77 M
-cuesta **menos de 1 USD**.
+**Servicios:** GitHub listo (**el token caduca el 13 de septiembre de 2026**); Vercel Hobby
+sin usar todavia; Resend con `darkmelon.com` verificado pero **sin DMARC**; DeepInfra
+verificado y en uso.
 
-**Pendientes con fecha:** registrar `pliego.ec`; rotar las siete credenciales que pasaron por
-chat antes del primer despliegue; publicar DMARC antes del primer envío masivo; renovar el
-token de GitHub antes del 13 de septiembre o los flujos dejarán de correr en silencio.
-
-**La cuenta de Supabase es temporal por diseño.** Al llegar los clientes se migra a la cuenta
-personal con plan Pro. Los invariantes 5, 6, 7 y 8 existen para que esa migración cueste media
-jornada.
+**Pendientes con fecha:** registrar `pliego.ec` (35 USD/año); rotar las siete credenciales
+que pasaron por chat antes del primer despliegue; publicar DMARC antes del primer envio
+masivo; renovar el token de GitHub antes del 13 de septiembre o los flujos dejaran de
+correr en silencio.
 
 ---
 
-## 10. Estado de la fase 1
+## 10. Que falta
 
-**Hecho y verificado en produccion:**
-- Repositorios `pliego-datos` (publico) y `pliego-app` (privado, vacio).
-- Proyecto Supabase `pliego`, ref `ioxnmaxwbcnfomuenyrq`, region us-east-1.
-  Migracion 0001 aplicada.
-- Ingesta CSV completa: descarga con reintentos, validacion de contrato, normalizacion,
-  carga por COPY. Verificada en Actions sobre 2026-08.
-- Ruta JSON (`detalle.py`) y publicacion en Parquet (`publicar.py`). Extraccion
-  verificada contra datos reales; la escritura de Parquet se comprueba en Actions
-  porque pyarrow no tiene ruedas para Windows ARM64.
-- Agregados: migracion 0002 y `agrega.py`.
-- 36 pruebas.
+**Para cerrar la fase 1:**
+1. **Fusionar las categorias duplicadas.** 400 grupos dan solo ~257 nombres distintos;
+   «Material de oficina» esta partido en siete. El paso existe (`--fusionar`) y esta en el
+   flujo, pero **no se ha ejecutado nunca**. Ver D-021.
+2. **Publicar el Parquet del historico.** Van 2 meses de 140. Cada mes tarda ~20 min por
+   la ruta JSON, asi que hay que ir **por años**, empezando por 2024-2026: el benchmark
+   usa una ventana de 24 meses, no once años.
+3. **Poblar `precio_cpc` y `mercado_cpc_prov`** desde los Parquet. Es lo ultimo que falta
+   para el benchmark, que es la funcion que se cobra.
 
-**En curso:** backfill de los 140 meses (2015-01 a 2026-08).
-
-**Pendiente de la fase 1:**
-1. Aplicar la migracion 0002 y correr `agrega.py` cuando termine el backfill.
-2. Publicar el Parquet del historico (`publicar-parquet.yml`).
-3. `clasifica.py`: embeddings de DeepInfra + agrupamiento. Desbloquea el benchmark.
-4. Poblar `precio_cpc` y `mercado_cpc_prov` desde los Parquet.
+**Fase 2:** la aplicacion. `pliego-app` esta vacio. Todo lo que necesita —radar, fichas,
+buscador, compradores huerfanos— ya esta en Postgres.
 
 **Trampas del entorno local**, para no redescubrirlas:
 - Windows ARM64 no tiene ruedas de `psycopg` ni `pyarrow`. El destino es Actions sobre
@@ -303,6 +294,9 @@ jornada.
 - `git push` por HTTPS falla con «Connection was reset»; funciona con
   `-c http.version=HTTP/1.1`.
 - La consola de Windows mutila el texto acentuado. **Nunca diagnosticar codificacion
-  mirando la pantalla**: usar `repr()` o `ord()`. Ese error ya costo dos iteraciones.
+  mirando la pantalla**: usar `repr()` o `ord()`.
 - No escribir literales acentuados en codigo de deteccion de mojibake: las herramientas
-  de edicion los normalizan. Construirlos con `chr()` o `encode`/`decode`.
+  de edicion los normalizan. Construirlos con `chr()`.
+- **Sustituir texto por programa falla en silencio si no encuentra la cadena.** Paso tres
+  veces en una sesion, una de ellas dejo la taxonomia sin escribir. Usar la herramienta de
+  edicion, que si falla, o verificar con `assert` despues.
