@@ -1,0 +1,47 @@
+name: compactar
+
+# Recupera el espacio de las tuplas muertas. Ver docs/decisiones.md D-021 y D-024.
+#
+# Existe porque el borrado y copia de un rango de meses, o un update masivo, dejan la
+# tabla con el doble de tamano en disco. Tras reingerir 24 meses la base paso de 380 a
+# **502,30 MB** — por encima del techo de 500 del plan gratuito de Supabase, que deja el
+# proyecto en solo lectura. La alarma de presupuesto lo detecto; esto lo arregla.
+#
+# VACUUM FULL bloquea la tabla mientras corre y no puede ir dentro de una transaccion.
+on:
+  workflow_dispatch:
+    inputs:
+      tablas:
+        description: "Tablas a compactar, separadas por espacio"
+        required: false
+        default: "proceso_resumen hecho_mes entidad entidad_ano relacion categoria"
+        type: string
+
+jobs:
+  compactar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Compactar
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "src")
+          from clasifica import compactar
+          from carga import conexion, verificar_presupuesto
+          tablas = "${{ inputs.tablas }}".split()
+          with conexion() as con:
+              print(f"antes: {verificar_presupuesto(con)} MB")
+          compactar(*tablas)
+          with conexion() as con:
+              print(f"despues: {verificar_presupuesto(con)} MB")
+          PY
