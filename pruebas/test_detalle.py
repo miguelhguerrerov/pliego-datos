@@ -64,3 +64,62 @@ def test_partes_traen_territorio(detalle_real):
     """El CSV no trae provincia ni cantón: solo se obtienen de parties[].address."""
     con_provincia = [p for p in detalle_real.partes if p["provincia"]]
     assert len(con_provincia) / len(detalle_real.partes) > 0.95
+
+
+# --- el esquema del Parquet, declarado y no inferido ---------------------------
+
+def test_el_esquema_cubre_todo_lo_que_se_extrae(detalle_real):
+    """`detalle.py` extrae y `publicar.py` declara. Si divergen, el campo nuevo NO da
+    error: sale del Parquet en silencio y solo se nota al construir encima."""
+    from publicar import ESQUEMAS, TABLAS
+
+    for tabla in TABLAS:
+        filas = getattr(detalle_real, tabla)
+        if not filas:
+            continue
+        faltan = set(filas[0]) - set(ESQUEMAS[tabla])
+        assert not faltan, f"{tabla}: campos sin declarar en ESQUEMAS: {sorted(faltan)}"
+
+
+def test_un_texto_que_llega_como_numero_no_tumba_el_mes():
+    """La causa real del fallo de 2023-03: la fuente entrega `planning.budget.id` como
+    texto casi siempre y como número a veces. `from_pylist` infería el tipo del primer
+    lote y reventaba con «Expected bytes, got a 'int' object» — un mes entero perdido
+    por un campo."""
+    from publicar import _columnas
+
+    cols = _columnas(
+        [{"ocid": "a", "partida": "530804"}, {"ocid": "b", "partida": 530804}],
+        {"ocid": "texto", "partida": "texto"},
+    )
+    assert cols["partida"] == ["530804", "530804"]
+
+
+def test_un_numero_ilegible_vale_nulo_y_no_detiene_el_mes():
+    """Perder un campo mal formado es mejor que abortar un mes de 16.000 procesos."""
+    from publicar import _columnas
+
+    cols = _columnas(
+        [{"valor": "1234,56"}, {"valor": 99.5}, {"valor": None}],
+        {"valor": "decimal"},
+    )
+    assert cols["valor"] == [None, 99.5, None]
+
+
+def test_el_esquema_manda_sobre_los_datos():
+    """Un campo que la fuente deja de enviar debe salir como columna de nulos, no
+    desaparecer: si no, los 140 archivos dejan de ser un solo dataset."""
+    from publicar import _columnas
+
+    cols = _columnas([{"ocid": "a"}], {"ocid": "texto", "cpc": "texto"})
+    assert cols == {"ocid": ["a"], "cpc": [None]}
+
+
+def test_se_detiene_si_se_extrae_un_campo_sin_declarar():
+    """Regla 6 del método: nada se pierde en silencio."""
+    import pytest as _pytest
+
+    from publicar import _columnas
+
+    with _pytest.raises(ValueError, match="no declara"):
+        _columnas([{"ocid": "a", "nuevo": 1}], {"ocid": "texto"})

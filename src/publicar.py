@@ -36,6 +36,81 @@ API = "https://api.github.com"
 
 TABLAS = ("procesos", "items", "oferentes", "pujas", "partes")
 
+# ---------------------------------------------------------------------------
+# Esquema declarado, no inferido.
+#
+# `from_pylist` deducía el tipo de cada columna del primer lote de filas. Funcionó en
+# 137 meses y reventó en 2023-03 con «Expected bytes, got a 'int' object»: la fuente
+# entrega `planning.budget.id` como texto casi siempre y como número a veces.
+#
+# El fallo visible era el menor de los dos problemas. El otro no daba error: con el tipo
+# inferido, `cpc` podía salir como texto en un mes y como entero en otro, y los 140
+# archivos dejarían de ser UN dataset — leerlos con un comodín falla, o peor, descarta
+# columnas en silencio. Eso solo se habría visto al construir el benchmark encima.
+#
+# Se declara en texto, sin pyarrow, porque el entorno local es Windows ARM64 y ahí no
+# hay ruedas: este módulo tiene que poder importarse sin pyarrow instalado.
+# ---------------------------------------------------------------------------
+ESQUEMAS: dict[str, dict[str, str]] = {
+    "procesos": {
+        "ocid": "texto", "estado": "texto", "metodo": "texto", "titulo": "texto",
+        "objeto": "texto", "referencial": "decimal", "n_oferentes": "entero",
+        "categoria_ocds": "texto", "criterio": "texto", "partida": "texto",
+        "justificacion": "texto", "comprador_ruc": "texto", "fecha": "texto",
+    },
+    "items": {
+        "ocid": "texto", "origen": "texto", "item_id": "texto", "cpc": "texto",
+        "descripcion": "texto", "cantidad": "decimal", "unidad": "texto",
+        "precio_unitario": "decimal", "moneda": "texto",
+    },
+    "oferentes": {
+        "ocid": "texto", "ruc": "texto", "nombre": "texto", "gano": "logico",
+    },
+    "pujas": {
+        "ocid": "texto", "puja_id": "texto", "ruc": "texto", "fecha": "texto",
+        "valor": "decimal",
+    },
+    "partes": {
+        "ocid": "texto", "ruc": "texto", "nombre": "texto", "roles": "texto",
+        "provincia": "texto", "canton": "texto", "web": "texto",
+    },
+}
+
+
+def _valor(v, tipo: str):
+    """Lleva un valor de la fuente al tipo declarado. Lo que no se puede convertir vale
+    nulo: perder un campo mal formado es mejor que abortar un mes entero por él."""
+    if v is None or v == "":
+        return None
+    if tipo == "texto":
+        return v if isinstance(v, str) else str(v)
+    if tipo == "logico":
+        return bool(v)
+    try:
+        return float(v) if tipo == "decimal" else int(float(v))
+    except (TypeError, ValueError):
+        return None
+
+
+def _columnas(filas: list[dict], esquema: dict[str, str]) -> dict[str, list]:
+    """Filas a columnas, ya convertidas. Un campo que la fuente deja de enviar sale
+    como columna de nulos y no como columna ausente: el esquema manda, no los datos.
+
+    Al revés no: un campo que `detalle.py` extrae y el esquema no declara se perdería
+    sin ruido, que es exactamente la clase de fallo que este proyecto ya ha pagado
+    cuatro veces. Se detiene."""
+    sobran = set(filas[0]) - set(esquema)
+    if sobran:
+        raise ValueError(
+            f"detalle.py extrae campos que el esquema de publicar.py no declara: "
+            f"{sorted(sobran)}. Añádelos a ESQUEMAS con su tipo, o el Parquet los "
+            f"descartaría en silencio."
+        )
+    return {
+        nombre: [_valor(f.get(nombre), tipo) for f in filas]
+        for nombre, tipo in esquema.items()
+    }
+
 
 def _escribir_parquet(detalle: DetalleMes, destino: Path) -> list[Path]:
     """Un archivo por tabla y mes. Compresión zstd: mejor ratio que snappy y DuckDB
@@ -43,14 +118,22 @@ def _escribir_parquet(detalle: DetalleMes, destino: Path) -> list[Path]:
     import pyarrow as pa
     import pyarrow.parquet as pq
 
+    tipos = {"texto": pa.string(), "decimal": pa.float64(),
+             "entero": pa.int64(), "logico": pa.bool_()}
+
     destino.mkdir(parents=True, exist_ok=True)
     escritos = []
     for nombre in TABLAS:
         filas = getattr(detalle, nombre)
         if not filas:
             continue
+        esquema = ESQUEMAS[nombre]
+        tabla = pa.table(
+            _columnas(filas, esquema),
+            schema=pa.schema([(c, tipos[t]) for c, t in esquema.items()]),
+        )
         ruta = destino / f"{nombre}_{detalle.anio}_{detalle.mes:02d}.parquet"
-        pq.write_table(pa.Table.from_pylist(filas), ruta, compression="zstd")
+        pq.write_table(tabla, ruta, compression="zstd")
         escritos.append(ruta)
     return escritos
 
