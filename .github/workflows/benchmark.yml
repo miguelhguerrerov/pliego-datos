@@ -1,0 +1,35 @@
+name: benchmark
+
+# Puebla precio_cpc y mercado_cpc_prov desde los Parquet publicados. Es la funcion
+# que se cobra: todo lo demas del producto se resuelve con el CSV.
+#
+# Semanal: los precios de una ventana de 24 meses no cambian de un dia para otro, y
+# descargar los Parquet cuesta.
+on:
+  schedule:
+    - cron: "0 6 * * 1"      # lunes
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Poblar el benchmark de precios
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python src/precios.py
+
+      - name: Consultas de producto
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python -m pytest pruebas/test_producto.py -q
