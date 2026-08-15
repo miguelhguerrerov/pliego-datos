@@ -644,3 +644,35 @@ depende de que un componente se acuerde de ocultarlo.
 revocado el acceso a `entidad`, así que devolvía 401. **Mirar las políticas no lo habría
 detectado**: se detectó probando con la clave anónima real contra la API pública, que es
 el nivel donde el fallo ocurre.
+
+---
+
+## D-026 · PostgREST corta en 1.000 filas y la portada mentía por un factor de 57
+**2026-08-15**
+
+**Contexto.** Primera construcción de la aplicación. La portada mostraba **56,1 M** «en
+juego» sobre 15 194 procesos; el radar, **1,2 MM** sobre los 60 mayores. Sesenta procesos
+no pueden sumar veinte veces más que quince mil.
+
+**Causa.** PostgREST devuelve **como máximo 1 000 filas** por petición. El conteo
+(`count: "exact"`) era correcto porque lo calcula el servidor, pero la suma se hacía en el
+cliente sobre las filas devueltas: sumaba mil de quince mil. **La cifra real son 3 203
+millones** — la portada se equivocaba por un factor de 57, en el número principal del
+producto.
+
+**Cómo apareció.** Comparando la misma magnitud en dos pantallas. No hubo error, ni
+excepción, ni prueba en rojo: dos números plausibles que no cuadraban entre sí. Es la
+tercera vez en el proyecto que un fallo se detecta por contraste y no por una alarma
+(D-019 y D-014 fueron igual).
+
+**Decisión.** Los totales se precalculan en vistas —`v_radar_resumen`, `v_portada`— y la
+aplicación los lee. **Nunca se agrega en el cliente.**
+
+**Consecuencia de método.** La regla ya existía —«los agregados se precalculan y la
+aplicación los lee»— y la salté porque para tres cifras parecía desproporcionado montar
+una vista. Además de dar cifras falsas, sumar en el cliente obliga a traer miles de filas
+para tirarlas, que es justo lo que consume el egress de 5 GB del plan gratuito.
+
+Añadir a las trampas del `CLAUDE.md`: **cualquier `sum`, `count` o `avg` hecho en
+JavaScript sobre datos de Supabase está mal por defecto.** Si el resultado cabe en una
+fila, es una vista.

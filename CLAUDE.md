@@ -56,6 +56,7 @@ Cosas que parecen buena idea al empezar una sesión en frío y no lo son.
 | «pgvector para la búsqueda semántica» | Los embeddings no caben en 500 MB. Van en Parquet, truncados a 256 dimensiones. |
 | «Clasificar cada proceso con un LLM» | Son 2,77 M llamadas. Embeddings + agrupamiento + etiquetar solo los grupos: de ~50 USD a ~2 USD. |
 | «Un cron de Vercel para la ingesta» | Timeout garantizado. Va en Actions. |
+| «Sumo estas cifras en el cliente y listo» | PostgREST corta en **1.000 filas**: la portada dio 56 M donde el real eran 3.203 M, sin error visible. Todo `sum`/`count`/`avg` va en una vista. |
 | «Verificar un subdominio aparte en Resend» | El plan gratuito permite un solo dominio y `darkmelon.com` ya lo ocupa. |
 | «Crear otra organización en Supabase para tener más cupo» | El límite de 2 proyectos activos es **por usuario**, no por organización. Comprobado con un 400 explícito. |
 
