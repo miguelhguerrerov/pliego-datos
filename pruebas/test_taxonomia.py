@@ -1,0 +1,167 @@
+"""La taxonomía sale del CPC, y los nombres se comprueban antes de publicarse.
+
+Cada prueba de aquí corresponde a un defecto real de la taxonomía anterior, medido sobre
+las 242 categorías que llegaron a producción. Ver docs/decisiones.md D-030.
+"""
+
+import sys
+from collections import Counter
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from taxonomia import (  # noqa: E402
+    _clave_normalizada,
+    agrupar_items,
+    cpc_dominante,
+    grupo_de,
+    nombre_de_respaldo,
+    resolver_nombres,
+    validar_nombre,
+)
+
+
+# --- el nivel de agrupación -----------------------------------------------------
+
+def test_la_subclase_agrupa_los_codigos_de_la_misma_familia():
+    """Medido contra la fuente: los códigos van de 8 a 12 dígitos y los 5 primeros son
+    la subclase CPC. `3526000506` y `352600511` son dos presentaciones de medicamento."""
+    assert grupo_de("3526000506") == "35260"
+    assert grupo_de("352600511") == "35260"
+    assert grupo_de("87141001") == "87141"
+
+
+def test_un_codigo_inservible_no_inventa_grupo():
+    for malo in (None, "", "  ", "AB", "7"):
+        assert grupo_de(malo) is None, f"{malo!r} no debería dar grupo"
+
+
+def test_el_codigo_llega_a_veces_como_numero():
+    """Ya pasó con `planning.budget.id` y costó un mes entero de publicación (D-028).
+    La fuente no promete el tipo de sus identificadores."""
+    assert grupo_de(3526000506) == "35260"
+
+
+# --- qué compra realmente un proceso --------------------------------------------
+
+def test_el_cpc_del_proceso_es_el_que_concentra_el_monto():
+    """Cien líneas de clips no convierten en papelería una compra de computadoras.
+    Por número de líneas ganaría el clip; por monto gana lo que se compró."""
+    items = (
+        [{"ocid": "a", "origen": "award", "cpc": "45281", "cantidad": 5,
+          "precio_unitario": 900}]
+        + [{"ocid": "a", "origen": "award", "cpc": "38912", "cantidad": 1,
+            "precio_unitario": 0.5}] * 100
+    )
+    assert cpc_dominante(items)["a"][0] == "45281"
+
+
+def test_manda_lo_adjudicado_sobre_lo_convocado():
+    """Los ítems de `award` son los que de verdad se compraron; los de `tender`, lo que
+    se pidió. Cuando hay ambos, los de tender ni se miran."""
+    items = [
+        {"ocid": "a", "origen": "tender", "cpc": "35260", "cantidad": 100,
+         "precio_unitario": 100},
+        {"ocid": "a", "origen": "award", "cpc": "87141", "cantidad": 1,
+         "precio_unitario": 10},
+    ]
+    assert cpc_dominante(items)["a"][0] == "87141"
+
+
+def test_un_item_sin_precio_sigue_declarando_que_se_compra():
+    """Un ítem sin precio es igualmente una declaración de qué se compra: si fuera el
+    único, el proceso se quedaría sin categoría por no traer una cifra."""
+    items = [{"ocid": "a", "origen": "award", "cpc": "35260",
+              "cantidad": None, "precio_unitario": None}]
+    assert cpc_dominante(items)["a"][0] == "35260"
+
+
+# --- los nombres: el defecto que llegó a producción ------------------------------
+
+def test_se_rechaza_el_razonamiento_del_modelo():
+    """El caso literal: la taxonomía anterior publicó una categoría con 4.308 procesos
+    llamada «Medicamento antiviral y antibiótico no, es más genérico: Med». Nadie
+    miraba la salida del modelo."""
+    assert not validar_nombre(
+        "Medicamento antiviral y antibiótico no, es más genérico: Med")
+
+
+def test_se_rechaza_lo_que_no_es_un_nombre():
+    malos = [
+        "",
+        "Es una categoría de medicamentos",
+        "el nombre sería Medicamento",
+        "Categoría: papelería",
+        "Medicamento 500 mg",
+        "material de oficina",          # sin mayúscula inicial
+        "A",
+        "Servicios de mantenimiento y reparación de vehículos automotores diversos",
+    ]
+    for m in malos:
+        assert not validar_nombre(m), f"{m!r} debería rechazarse"
+
+
+def test_se_aceptan_los_nombres_buenos():
+    """La prueba de falso positivo (regla 5): un validador que rechaza todo es tan
+    inútil como uno que acepta todo, y además invisible."""
+    buenos = [
+        "Medicamentos", "Material de oficina", "Mantenimiento de vehículos",
+        "Reactivos de laboratorio", "Obra civil", "Uniformes escolares",
+    ]
+    for b in buenos:
+        assert validar_nombre(b), f"{b!r} debería aceptarse"
+
+
+def test_si_el_modelo_falla_manda_la_descripcion_oficial():
+    """Es preferible un nombre largo y burocrático de la fuente a uno inventado que
+    nadie ha comprobado."""
+    d = Counter({"SERVICIOS DE MANTENIMIENTO Y REPARACION DE VEHICULOS DE MOTOR. "
+                 "ESTOS SERVICIOS INCLUYEN": 99})
+    n = nombre_de_respaldo(d)
+    assert n and len(n) <= 48
+    assert "ESTOS SERVICIOS" not in n
+    assert n[0].isupper()
+
+
+def test_dos_categorias_no_pueden_llamarse_igual():
+    """Es el defecto original entero: «oficina» quedó repartido en 12 categorías con
+    74.209 procesos porque nada impedía que dos grupos recibieran el mismo rótulo."""
+    descripciones = {
+        "35291": Counter({"REACTIVOS PARA ANALISIS CELULAR": 80}),
+        "35440": Counter({"REACTIVOS COMPUESTOS PARA DIAGNOSTICO": 20}),
+    }
+    nombres = resolver_nombres(descripciones, bautizador=lambda g, d: "Reactivos")
+    assert len(set(nombres.values())) == 2, f"nombres repetidos: {nombres}"
+    assert "35440" in nombres["35440"], "la desambiguación debe usar el código"
+
+
+def test_los_duplicados_de_mayuscula_y_plural_cuentan_como_el_mismo_nombre():
+    """«Equipo médico», «Equipo Médico» y «Equipos médicos» convivieron en producción.
+    Detectarlos no necesita un modelo: es comparación de cadenas."""
+    claves = {_clave_normalizada(n) for n in
+              ("Equipo médico", "Equipo Médico", "Equipos médicos", "Equipos Medicos")}
+    assert len(claves) == 1, f"deberían ser la misma clave: {claves}"
+
+
+def test_material_y_articulos_de_oficina_no_son_lo_mismo_por_cadena():
+    """El límite honesto de la comparación por cadena: no resuelve sinónimos. Por eso la
+    taxonomía la define el CPC y no los nombres — si dependiera de los nombres,
+    volveríamos a las doce categorías de oficina."""
+    assert _clave_normalizada("Material de oficina") != _clave_normalizada("Artículos de oficina")
+
+
+# --- el conjunto ----------------------------------------------------------------
+
+def test_agrupar_devuelve_categoria_para_cada_proceso_con_items():
+    items = [
+        {"ocid": "a", "origen": "award", "cpc": "3526000506",
+         "descripcion": "Amoxicilina 500 mg", "cantidad": 10, "precio_unitario": 2},
+        {"ocid": "b", "origen": "tender", "cpc": "87141001",
+         "descripcion": "MANTENIMIENTO DE VEHICULOS", "cantidad": 1, "precio_unitario": 500},
+        {"ocid": "c", "origen": "award", "cpc": None,
+         "descripcion": "algo sin clasificar", "cantidad": 1, "precio_unitario": 9},
+    ]
+    descripciones, por_ocid = agrupar_items(items)
+    assert por_ocid == {"a": "35260", "b": "87141"}
+    assert set(descripciones) == {"35260", "87141"}
+    assert "c" not in por_ocid, "un proceso sin CPC no debe recibir categoría inventada"

@@ -1,0 +1,44 @@
+name: taxonomia
+
+# Reconstruye la taxonomia desde el CPC de los Parquet. Ver docs/decisiones.md D-030.
+#
+# No va en el trabajo diario: la taxonomia es estable por construccion —la subclase CPC
+# no cambia— y solo hay que rehacerla cuando aparecen subclases nuevas. Los procesos
+# nuevos de cada dia los recategoriza `agregados.yml` con el paso de pendientes.
+on:
+  schedule:
+    - cron: "0 12 5 * *"     # dia 5, tras la publicacion mensual de Parquet
+  workflow_dispatch:
+    inputs:
+      sin_modelo:
+        description: "Nombrar solo con la descripcion oficial, sin llamar al modelo"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  construir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Construir taxonomia y recategorizar
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          DEEPINFRA_API_KEY: ${{ secrets.DEEPINFRA_API_KEY }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python src/taxonomia.py ${{ inputs.sin_modelo && '--sin-modelo' || '' }}
+
+      - name: Consultas de producto
+        # Una taxonomia que se construye sin error puede dejar el 90% de los procesos sin
+        # categoria. Ver docs/metodo.md regla 1.
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python -m pytest pruebas/test_producto.py -q
