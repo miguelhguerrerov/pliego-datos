@@ -186,3 +186,86 @@ def test_la_tesis_del_producto_se_sostiene(con):
         f"25-100K con {m['25-100K']}: la escalada que sostiene la propuesta de valor "
         f"no aparece en los datos"
     )
+
+
+# --- D-027: el tramo salia de un anio a medias ---------------------------------
+
+def test_el_segmento_objetivo_tiene_el_tamano_esperado(con):
+    """El segmento objetivo son ~6.700 empresas entre 100 K y 2 M (D-004). Es el eje del
+    modelo de negocio y la aplicación filtra por él.
+
+    Calcular el tramo sobre el año en curso —que va por agosto— lo dejaba en 2.694: más
+    de la mitad del mercado direccionable fuera de su propio segmento, sin ningún error.
+    Ver D-027."""
+    n = _uno(con, "select count(*) from entidad where tramo in ('100-500K','500K-2M')")
+    assert 4_500 <= n <= 9_000, (
+        f"el segmento objetivo tiene {n:,} empresas; se esperan unas 6.700. "
+        f"Si es la mitad, el tramo se está calculando sobre el año en curso (D-027)."
+    )
+
+
+def test_ningun_proveedor_grande_cae_en_un_tramo_pequeno(con):
+    """Contraste directo: quien facturó más de 2 M en el último año completo no puede
+    estar en un tramo por debajo de 2 M."""
+    mal = _uno(con, """
+        with base as (
+            select max(anio) as anio from entidad_ano
+            where rol='proveedor' and anio < extract(year from current_date)
+        )
+        select count(*)
+        from entidad e
+        join entidad_ano ea on ea.ruc = e.ruc and ea.rol='proveedor'
+        join base b on ea.anio = b.anio
+        where ea.monto >= 2000000
+          and e.tramo in ('<5K','5-25K','25-100K','100-500K','500K-2M')
+    """)
+    assert mal == 0, (
+        f"{mal} proveedores facturaron más de 2 M en el último año completo y están "
+        f"clasificados por debajo. El tramo no sale del año completo (D-027)."
+    )
+
+
+# --- la ficha de proveedor (migracion 0010) ------------------------------------
+
+def test_la_ficha_de_proveedor_devuelve_datos(con):
+    """La ficha es la pantalla que se indexa: 77.693 URLs con nombre de empresa real.
+    Una vista que existe y devuelve cero filas se despliega en verde."""
+    n = _uno(con, "select count(*) from v_proveedor")
+    assert n > 15_000, f"v_proveedor devuelve {n} filas; se esperan decenas de miles"
+
+    completas = _uno(con, """
+        select count(*) from v_proveedor
+        where monto_base > 0 and nombre is not null and tramo is not null
+    """)
+    assert completas / n > 0.3, (
+        f"solo {completas} de {n} fichas tienen monto, nombre y tramo. "
+        f"Una ficha sin cifras no sirve como canal de adquisición."
+    )
+
+
+def test_la_ficha_no_expone_personas_naturales(con):
+    """Invariante 9: el RUC de persona natural contiene la cédula. Sin ficha, sin ruta,
+    sin indexar. Se excluyen en la vista y no en el componente."""
+    n = _uno(con, """
+        select count(*) from v_proveedor v
+        join entidad e on e.ruc = v.ruc
+        where e.es_persona_natural
+    """)
+    assert n == 0, f"{n} personas naturales tienen ficha pública. Rompe el invariante 9."
+
+
+def test_el_puesto_en_el_tramo_es_coherente(con):
+    """El puesto se muestra como «412 de 5.928 en su tramo». Si el puesto supera al
+    total, la cifra que ve el cliente es absurda."""
+    mal = _uno(con,
+               "select count(*) from v_proveedor where puesto_tramo > n_tramo")
+    assert mal == 0, f"{mal} fichas tienen un puesto mayor que el tamaño de su tramo"
+
+
+def test_los_compradores_huerfanos_no_incluyen_a_los_propios(con):
+    """La cifra que engancha: «hay N entidades comprando lo que usted vende y ninguna le
+    ha comprado». Si incluye a sus propios clientes, la promesa es falsa."""
+    fila = _uno(con, "select count(*) from v_proveedor_huerfanos where n_huerfanos > 0")
+    assert fila and fila > 1_000, (
+        f"solo {fila} proveedores tienen compradores huérfanos; se esperan miles"
+    )

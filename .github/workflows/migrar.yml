@@ -1,0 +1,62 @@
+name: migrar
+
+# Aplica una migracion a la base.
+#
+# Existe porque el invariante 5 dice que toda la estructura vive en `migraciones/*.sql`
+# y nada se crea desde el panel de Supabase — pero hasta ahora no habia una via
+# reproducible de aplicarlas: se hacian a mano. Una migracion que solo existe en el
+# repositorio y se aplico a mano es una migracion que nadie puede repetir, y repetirla
+# en media jornada es justo lo que sostiene el plan de migrar de cuenta Supabase.
+#
+# Se pasa el archivo a proposito, en vez de aplicar todas: las migraciones no son
+# idempotentes entre si (la 0007 crea politicas, que fallan si ya existen).
+#
+# El entorno local no puede hacer esto: Windows ARM64 no tiene ruedas de psycopg y aqui
+# no hay psql. Es la misma razon por la que todo el computo pesado corre en Actions.
+
+on:
+  workflow_dispatch:
+    inputs:
+      archivo:
+        description: "Migracion a aplicar, p.ej. 0010_vista_proveedor.sql"
+        required: true
+        type: string
+
+jobs:
+  aplicar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Comprobar que la migracion existe
+        # Fallar aqui con un mensaje claro y no con un error de psql sobre un fichero
+        # vacio. Los errores dicen que paso y como arreglarlo.
+        run: |
+          ruta="migraciones/${{ inputs.archivo }}"
+          if [ ! -f "$ruta" ]; then
+            echo "No existe $ruta. Disponibles:"
+            ls migraciones/
+            exit 1
+          fi
+          echo "Se aplicara $ruta ($(wc -l < "$ruta") lineas)"
+
+      - name: Instalar cliente de Postgres
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+
+      - name: Aplicar
+        # El agrupador, no el host directo: db.<ref>.supabase.co solo resuelve IPv6 y los
+        # runners de GitHub no tienen IPv6. Ya costo una sesion descubrirlo.
+        env:
+          PGURL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          psql "$PGURL" -v ON_ERROR_STOP=1 -f "migraciones/${{ inputs.archivo }}"
+
+      - name: Consultas de producto
+        # Una migracion que crea vistas y no rompe nada sigue pudiendo devolver cero
+        # filas. Ver docs/metodo.md regla 1.
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          pip install -r requirements.txt
+          python -m pytest pruebas/test_producto.py -q
