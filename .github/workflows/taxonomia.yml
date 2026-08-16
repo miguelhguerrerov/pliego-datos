@@ -58,6 +58,24 @@ jobs:
           DEEPINFRA_API_KEY: ${{ secrets.DEEPINFRA_API_KEY }}
         run: python src/clasifica.py --por-texto ${{ inputs.seco && '--seco' || '' }}
 
+      - name: Refrescar el resumen de mercados
+        # Materializada porque el indice expiraba al calcularla al vuelo (0021). Como
+        # toda tabla derivada, si nadie la refresca miente en silencio: dira las cifras
+        # del dia anterior sin avisar de que son viejas.
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "src")
+          from carga import conexion
+          with conexion() as con:
+              with con.cursor() as cur:
+                  cur.execute("refresh materialized view concurrently v_mercado")
+              con.commit()
+          print("v_mercado refrescada")
+          PY
+
       - name: Compactar
         # Toda escritura masiva deja la tabla al doble en disco. Sin este paso la base
         # subio a 502 y luego a 534 MB, por encima del techo de 500 del plan gratuito

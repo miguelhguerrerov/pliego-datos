@@ -504,3 +504,38 @@ def test_la_funcion_de_huerfanos_no_toca_tablas_revocadas(con):
         "la función debe leer entidades por `entidad_publica`, que enmascara el RUC de "
         "persona natural (invariante 9)"
     )
+
+
+def test_el_indice_de_mercados_responde(con):
+    """`/mercado` salió vacío en producción: la consulta del índice —ordenar 856
+    categorías por monto— expiraba con `57014: statement timeout`.
+
+    Filtrada por una categoría la misma vista respondía en 0,25 s; lo que no escala es
+    listar. Al desplegar medí 1,25 s y lo di por bueno, que con el límite de sentencia en
+    pocos segundos era el aviso de que quedaba un factor cuatro."""
+    n = _uno(con, "select count(*) from v_mercado")
+    assert n > 500, f"v_mercado tiene {n} filas; se esperan cientos"
+
+    # La consulta exacta de la página, con su orden y su límite.
+    with con.cursor() as cur:
+        cur.execute("""
+            select cpc, nombre, n_procesos, monto, n_proveedores, n_entidades
+            from v_mercado order by monto desc limit 120
+        """)
+        filas = cur.fetchall()
+    assert len(filas) == 120, f"el índice devuelve {len(filas)} filas, no 120"
+    assert filas[0][3] > 0, "la categoría de mayor monto no tiene monto"
+
+
+def test_el_resumen_de_mercados_no_esta_rancio(con):
+    """Una vista materializada que nadie refresca miente en silencio: da las cifras del
+    día anterior sin decir que son viejas. Se compara contra la fuente de la que sale."""
+    if not _uno(con, "select count(*) from v_mercado"):
+        pytest.skip("sin la migración 0021")
+    vivas = _uno(con, "select count(distinct categoria_id) from proceso_resumen "
+                      "where categoria_id is not null")
+    materializadas = _uno(con, "select count(*) from v_mercado")
+    assert materializadas >= vivas * 0.9, (
+        f"la vista tiene {materializadas} categorías y hay {vivas} con procesos: "
+        f"falta un `refresh materialized view v_mercado`."
+    )

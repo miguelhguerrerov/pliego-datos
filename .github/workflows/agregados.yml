@@ -29,6 +29,24 @@ jobs:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: python src/agrega.py
 
+      - name: Refrescar el resumen de mercados
+        # Materializada porque el indice expiraba al calcularla al vuelo (0021). Como
+        # toda tabla derivada, si nadie la refresca miente en silencio: dira las cifras
+        # del dia anterior sin avisar de que son viejas.
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "src")
+          from carga import conexion
+          with conexion() as con:
+              with con.cursor() as cur:
+                  cur.execute("refresh materialized view concurrently v_mercado")
+              con.commit()
+          print("v_mercado refrescada")
+          PY
+
       - name: Guardias sobre la base cargada
         # Presupuesto de espacio y cifras de control. Detecta corrupcion silenciosa:
         # un normalizador que empieza a descartar filas, o una fuente que cambia.
