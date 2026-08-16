@@ -74,11 +74,11 @@ Este documento es el tablero. El *por qué* de cada decisión está en `decision
 
 | Actividad | Estado | Nota |
 |---|---|---|
-| Migraciones `0001`–`0016` | Hecho | Toda la estructura en SQL |
+| Migraciones `0001`–`0020` | Hecho | Toda la estructura en SQL |
 | RLS en las 16 tablas | Hecho | El muro vive aquí, no en el frontend |
 | Enmascaramiento de persona natural | Hecho | Vista `security definer` |
 | Flujos: ingesta, agregados, Parquet, taxonomía, benchmark, migrar, compactar | Hecho | |
-| Pruebas | Hecho | **81 verdes** |
+| Pruebas | Hecho | **82 verdes** |
 
 ---
 
@@ -93,10 +93,10 @@ Este documento es el tablero. El *por qué* de cada decisión está en `decision
 | Ficha 360 de entidad compradora | Hecho | Sin muro |
 | Buscador | Hecho | Por nombre y por objeto contractual |
 | «no declarado» distinto de «—» | Hecho | |
-| **Mercado por categoría `/mercado/[cpc]`** | **En curso** | Ya tiene datos reales debajo |
-| Benchmark de precio tras el muro | Pendiente | `precio_cpc` ya poblada |
-| Entrar / perfil con enlace mágico | **Pendiente** | Hasta entonces el muro apunta a un 404 |
-| Lista de compradores huérfanos | Bloqueado | La cifra se muestra; los nombres necesitan sesión |
+| Mercado por categoría e índice | Hecho | 856 mercados con movimiento |
+| **Entrar con enlace mágico** | **Hecho** | Sin contraseñas (invariante 6) |
+| **Perfil y alta de suscriptor** | **Hecho** | Disparador en `auth.users`, alta en plan gratuito |
+| **Lista de compradores huérfanos** | **Hecho** | Cifra en abierto, nombres tras el muro |
 | Alertas diarias por correo | Pendiente | Invariante 13 |
 | Exportación nocturna de suscriptores | Pendiente | Invariante 14 |
 
@@ -106,7 +106,8 @@ Este documento es el tablero. El *por qué* de cada decisión está en `decision
 
 | Actividad | Estado | Nota |
 |---|---|---|
-| Cobro por transferencia + factura electrónica | Pendiente | Stripe no opera en Ecuador |
+| **Correo propio en Supabase (SMTP de Resend)** | **Pendiente** | El remitente por omisión limita a ~4 enlaces/hora y no lleva la marca |
+| Cobro por transferencia + factura electrónica | Pendiente | Stripe no opera en Ecuador; la activación es manual y hay pantalla para pedirla |
 | PayPhone / Kushki | Pendiente | Después del primer cliente |
 | Umbral de validación (doc 12) | Pendiente | Congelar antes de medir |
 | Registrar `pliego.ec` | Pendiente | 35 USD/año |
@@ -118,11 +119,15 @@ Este documento es el tablero. El *por qué* de cada decisión está en `decision
 
 ## Camino crítico
 
-1. **`/mercado/[cpc]`** — en curso. Es la antesala del benchmark y el destino de los
-   enlaces de categoría.
-2. **`/entrar`** con enlace mágico — convierte el muro en real. Todo lo que hay detrás
-   (`precio_cpc`, `relacion`) ya está poblado y protegido.
-3. **Cobro** — cuando haya algo que cobrar y alguien a quien cobrárselo.
+**El producto ya se puede cobrar.** Lo que queda para que se cobre solo:
+
+1. **SMTP propio en Supabase.** Sin él, el enlace mágico está limitado a unos pocos
+   envíos por hora y llega con remitente ajeno. Es configuración, no código.
+2. **Alertas diarias por correo** — la razón recurrente para pagar, no solo la puntual.
+3. **Exportación nocturna de suscriptores** (invariante 14): esos datos no se regeneran
+   y el plan gratuito de Supabase no hace copias.
+4. **Precio y cobro** — activar un plan es hoy una acción manual con una pantalla que la
+   pide. Está bien para los primeros clientes y mal para los cincuenta primeros.
 
 ---
 
@@ -134,3 +139,7 @@ Este documento es el tablero. El *por qué* de cada decisión está en `decision
   qué quiere comprar antes de tener la cifra.
 - **`precio_unitario` es un nombre heredado y engañoso** en el Parquet: contiene el total
   de la línea. Renombrarlo obliga a republicar 140 meses. Anotado en tres sitios (D-033).
+- **Los compradores huérfanos bajaron mucho al cambiar la taxonomía.** DITECA pasó de 282
+  a 12. No es una pérdida: con 1 337 subclases CPC en vez de 242 categorías inventadas,
+  «quién compra lo mío» es un conjunto mucho más estrecho y mucho más cierto. La cifra
+  vende menos y sirve más.
