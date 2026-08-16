@@ -431,3 +431,40 @@ def test_el_mercado_no_expone_el_ruc_de_personas_naturales(con):
         where e.es_persona_natural and v.ruc is not null
     """)
     assert n == 0, f"{n} personas naturales aparecen con RUC en el listado de mercado"
+
+
+# --- el muro, comprobado desde el otro lado -------------------------------------
+
+def test_la_funcion_de_huerfanos_no_devuelve_nada_sin_plan(con):
+    """La comprobación que importa: **que el muro cierre**, no que abra.
+
+    `compradores_huerfanos` es `security invoker` y comprueba el plan dentro de la propia
+    consulta. Ejecutada sin sesión —`auth.email()` es nulo— el `exists` falla y no sale
+    ni una fila. Si esto devolviera algo, la función que se cobra sería gratuita para
+    cualquiera con la clave anónima, que va incrustada en el navegador."""
+    existe = _uno(con, "select count(*) from pg_proc where proname = 'compradores_huerfanos'")
+    if not existe:
+        pytest.skip("sin la migración 0019")
+
+    ruc = _uno(con, """
+        select proveedor_ruc from proceso_resumen
+        where proveedor_ruc is not null and categoria_id is not null
+        group by 1 order by count(*) desc limit 1
+    """)
+    n = _uno(con, "select count(*) from compradores_huerfanos(%s)", ruc)
+    assert n == 0, (
+        f"la función devolvió {n} filas sin sesión ni plan. El muro no cierra: "
+        f"revisa el `exists` sobre suscriptor en la migración 0019."
+    )
+
+
+def test_el_alta_de_suscriptor_no_regala_plan(con):
+    """Entrar es gratis y no da acceso a nada de pago. Si el disparador diera de alta en
+    `profesional`, bastaría un correo válido para llevarse el producto entero."""
+    mal = _uno(con, "select count(*) from suscriptor where plan <> 'gratuito'")
+    total = _uno(con, "select count(*) from suscriptor")
+    if not total:
+        pytest.skip("sin suscriptores todavía")
+    assert mal == 0 or mal < total, (
+        "todos los suscriptores tienen plan de pago: revisa que el alta sea 'gratuito'"
+    )
