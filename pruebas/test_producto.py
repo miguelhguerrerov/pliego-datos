@@ -391,3 +391,43 @@ def test_el_objeto_en_planificacion_no_es_el_codigo_del_expediente(con):
         f"{parecen_codigo:,} de {total:,} objetos en planificación parecen códigos de "
         f"expediente: `rationale` debe ir antes que `title` (D-031)."
     )
+
+
+# --- el mercado por categoría (migración 0017) ----------------------------------
+
+def test_el_mercado_por_categoria_devuelve_datos(con):
+    """Es la antesala del benchmark y el destino de los enlaces de categoría. Una vista
+    que existe y devuelve cero filas se despliega en verde."""
+    n = _uno(con, "select count(*) from v_mercado")
+    assert n > 500, f"v_mercado devuelve {n} categorías; se esperan más de mil"
+
+    completas = _uno(con, "select count(*) from v_mercado where monto > 0 and n_proveedores > 0")
+    assert completas / n > 0.5, (
+        f"solo {completas} de {n} mercados tienen monto y proveedores. Una categoría "
+        f"sin ninguna de las dos cosas no es una pantalla."
+    )
+
+
+def test_ningun_mercado_supera_una_magnitud_imposible(con):
+    """La regla que faltaba cuando `mercado_cpc_prov` publicó 8,1 billones de dólares
+    para un CPC (D-033): una cifra agregada se comprueba contra una magnitud conocida
+    del mundo, no solo contra su propia forma.
+
+    La contratación pública entera del Ecuador ronda los 7.000 millones al año, y esta
+    ventana son dos años."""
+    peor = _uno(con, "select max(monto) from v_mercado")
+    assert peor is None or peor < 5e9, (
+        f"un solo mercado da {peor:,.0f} USD en 24 meses. Es más que toda la "
+        f"contratación pública del país en ese periodo: revisa el cálculo."
+    )
+
+
+def test_el_mercado_no_expone_el_ruc_de_personas_naturales(con):
+    """Invariante 9, también aquí: el listado de quién gana es la vista con más
+    proveedores por pantalla de todo el producto."""
+    n = _uno(con, """
+        select count(*) from v_mercado_proveedor v
+        join entidad e on e.nombre = v.nombre
+        where e.es_persona_natural and v.ruc is not null
+    """)
+    assert n == 0, f"{n} personas naturales aparecen con RUC en el listado de mercado"
