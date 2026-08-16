@@ -282,11 +282,39 @@ def procesar_mes(anio: int, mes: int, con, seco: bool, forzar: bool) -> str:
     hechos = a_hecho_mes(filas, anio, mes)
     nombres = a_entidad_nombre(normalizado)
     with con.cursor() as cur:
+        # La ingesta NO es dueña de `cpc` ni de `categoria_id`: los pone `taxonomia.py`
+        # desde los ítems del Parquet. El borrado y copia se los llevaba por delante, y
+        # cada pasada dejaba el radar sin categorías hasta que alguien reconstruía la
+        # taxonomía entera — 35 minutos por dos meses recargados.
+        #
+        # `--pendientes` no bastaba: reasigna copiando de procesos ya clasificados, así
+        # que tras una recarga completa no tiene de dónde copiar y devuelve cero.
+        #
+        # Se guardan antes y se devuelven después. Un paso no debe destruir columnas
+        # que no le pertenecen. Ver docs/decisiones.md D-038.
+        cur.execute("""
+            create temp table clasificacion_previa on commit drop as
+            select ocid, cpc, categoria_id from proceso_resumen
+            where anio=%s and mes=%s and categoria_id is not null
+        """, (anio, mes))
+        cur.execute("select count(*) from clasificacion_previa")
+        preservadas = cur.fetchone()[0]
+
         # proceso_resumen: solo la ventana del radar. Los meses viejos se descartan.
         cur.execute("delete from proceso_resumen where anio=%s and mes=%s", (anio, mes))
         cur.execute("delete from hecho_mes where anio=%s and mes=%s", (anio, mes))
     if _dentro_de_ventana(anio, mes):
         copiar(con, "proceso_resumen", COLUMNAS_RESUMEN, filas)
+        with con.cursor() as cur:
+            cur.execute("""
+                update proceso_resumen p
+                   set cpc = c.cpc, categoria_id = c.categoria_id
+                  from clasificacion_previa c
+                 where p.ocid = c.ocid
+            """)
+            if preservadas:
+                print(f"    clasificación conservada en {cur.rowcount:,} de "
+                      f"{preservadas:,} procesos")
     copiar(con, "hecho_mes", COLUMNAS_HECHO, hechos)
     # Acumula frecuencias: un RUC visto en muchos meses suma en cada uno.
     with con.cursor() as cur:
