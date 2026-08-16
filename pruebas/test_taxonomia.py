@@ -204,17 +204,21 @@ def test_el_guardia_de_ejecucion_esta_al_final():
 
 # --- el referencial que el CSV no trae ------------------------------------------
 
-def test_el_referencial_sale_de_los_items_convocados():
+def test_el_referencial_es_la_suma_de_los_totales_de_linea():
     """1.264 de 5.717 procesos convocados de julio salían sin monto, y los 1.264 eran
-    subasta inversa: el CSV nunca trae `value_amount` para ese método. Cantidad × precio
-    unitario lo recupera."""
+    subasta inversa: el CSV nunca trae `value_amount` para ese método.
+
+    **Esta prueba nació equivocada.** Exigía cantidad × `precio_unitario`, porque el
+    nombre de la columna me hizo creer que era un precio por unidad. Es el total de la
+    línea (D-033), así que el referencial es la suma, sin multiplicar. Una prueba que
+    fija la semántica equivocada la vuelve más difícil de corregir, no más fácil."""
     from taxonomia import referencial_de_items
 
     items = [
         {"ocid": "a", "origen": "tender", "cantidad": 10, "precio_unitario": 100},
         {"ocid": "a", "origen": "tender", "cantidad": 2, "precio_unitario": 50},
     ]
-    assert referencial_de_items(items) == {"a": 1100.0}
+    assert referencial_de_items(items) == {"a": 150.0}
 
 
 def test_el_referencial_no_mezcla_lo_adjudicado():
@@ -227,7 +231,7 @@ def test_el_referencial_no_mezcla_lo_adjudicado():
         {"ocid": "a", "origen": "tender", "cantidad": 10, "precio_unitario": 100},
         {"ocid": "a", "origen": "award", "cantidad": 10, "precio_unitario": 80},
     ]
-    assert referencial_de_items(items) == {"a": 1000.0}
+    assert referencial_de_items(items) == {"a": 100.0}
 
 
 def test_un_item_sin_cifras_no_aporta_un_cero():
