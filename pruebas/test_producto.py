@@ -608,3 +608,42 @@ def test_la_cabecera_del_radar_cuadra_con_su_tabla(con):
     assert tabla == cabecera, (
         f"la cabecera dice {cabecera:,} y la tabla tiene {tabla:,}"
     )
+
+
+# --- D-039: el benchmark publica solo lo que sostiene una afirmación -------------
+
+def test_el_benchmark_solo_publica_lo_defendible(con):
+    """`precio_cpc` tiene 10.424 filas y la razón p75/p25 **mediana es 9,6×**. Un tercio
+    supera 20×.
+
+    Publicar «la mediana es 118,83» cuando el rango intercuartil va de 4,79 a 1.318,55 no
+    es informar: es dar una cifra que parece un precio y no lo es. Quien la use para
+    ofertar pierde el contrato o pierde dinero, y en los dos casos por culpa nuestra.
+
+    No es un defecto de cálculo: aunque el CPC tenga una sola descripción la razón sigue
+    en 8,9×, porque la unidad declarada es ambigua en origen — «Unidad» puede ser una
+    pastilla o una caja de cien."""
+    if not _uno(con, "select count(*) from precio_cpc"):
+        pytest.skip("sin benchmark poblado")
+
+    mal = _uno(con, "select count(*) from v_benchmark where p75 / p25 > 5 or n < 10")
+    assert mal == 0, (
+        f"{mal} filas del benchmark superan 5× de rango intercuartil o no llegan a n=10. "
+        f"Esas no son un precio, son un rango inútil."
+    )
+
+    filas = _uno(con, "select count(*) from v_benchmark")
+    assert filas > 1_000, (
+        f"el benchmark publicable tiene {filas} filas; se esperan ~1.900. Si cayó mucho, "
+        f"revisa el cálculo antes de relajar el umbral."
+    )
+
+
+def test_la_cobertura_del_benchmark_es_publica_pero_el_precio_no(con):
+    """La frontera exacta: **saber que existe un dato no es el dato**. La categoría puede
+    decir «hay 12 productos con precio»; cuál es el precio se paga.
+
+    Sin esto, `/mercado` ofrecería una puerta a una habitación vacía en el 40% de las
+    categorías que no tienen ni un precio publicable."""
+    cob = _uno(con, "select count(*) from v_benchmark_cobertura")
+    assert cob > 300, f"solo {cob} categorías tienen precio publicable; se esperan ~498"
