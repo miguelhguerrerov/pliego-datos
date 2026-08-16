@@ -35,7 +35,7 @@ SALIDA = Path(".parquet")
 REPO = os.environ.get("GITHUB_REPOSITORY", "miguelhguerrerov/pliego-datos")
 API = "https://api.github.com"
 
-TABLAS = ("procesos", "items", "oferentes", "pujas", "partes")
+TABLAS = ("procesos", "items", "oferentes", "pujas", "partes", "consultas", "lotes")
 
 # ---------------------------------------------------------------------------
 # Esquema declarado, no inferido.
@@ -74,6 +74,15 @@ ESQUEMAS: dict[str, dict[str, str]] = {
     "partes": {
         "ocid": "texto", "ruc": "texto", "nombre": "texto", "roles": "texto",
         "provincia": "texto", "canton": "texto", "web": "texto",
+    },
+    "consultas": {
+        "ocid": "texto", "consulta_id": "texto", "fecha": "texto",
+        "autor_ruc": "texto", "autor": "texto", "pregunta": "texto",
+        "respuesta": "texto", "fecha_respuesta": "texto",
+    },
+    "lotes": {
+        "ocid": "texto", "lote_id": "texto", "titulo": "texto",
+        "monto": "decimal", "tecnicas": "texto",
     },
 }
 

@@ -37,13 +37,20 @@ class DetalleMes:
     pujas: list[dict] = field(default_factory=list)
     partes: list[dict] = field(default_factory=list)
     procesos: list[dict] = field(default_factory=list)
+    # Las consultas son lo mas valioso del registro y llevaban aqui desde el principio
+    # sin que nadie las extrajera: 7,8 por proceso, con nombre de quien pregunta y la
+    # respuesta literal de la entidad. Es la entidad diciendo en publico por que
+    # descalifica a un competidor. Ver docs/decisiones.md D-035.
+    consultas: list[dict] = field(default_factory=list)
+    lotes: list[dict] = field(default_factory=list)
     metodos_fallidos: list[str] = field(default_factory=list)
 
     def resumen(self) -> str:
         return (
             f"{len(self.procesos):,} procesos · {len(self.items):,} ítems · "
             f"{len(self.oferentes):,} oferentes · {len(self.pujas):,} pujas · "
-            f"{len(self.partes):,} partes"
+            f"{len(self.partes):,} partes · {len(self.consultas):,} consultas · "
+            f"{len(self.lotes):,} lotes"
         )
 
     @property
@@ -205,6 +212,36 @@ def _extraer(release: dict, destino: DetalleMes) -> None:
             "provincia": dir_.get("region"),
             "canton": dir_.get("locality"),
             "web": (p.get("contactPoint") or {}).get("url"),
+        })
+
+    # Consultas: lo que los oferentes preguntaron y lo que la entidad contesto, con
+    # nombre y fecha. Es el unico sitio del dato abierto donde se lee POR QUE se
+    # descalifica a alguien, y no se puede buscar entre procesos en ningun otro lado.
+    for q in (tender.get("enquiries") or []):
+        autor = q.get("author") or {}
+        destino.consultas.append({
+            "ocid": ocid,
+            "consulta_id": q.get("id"),
+            "fecha": (q.get("date") or "")[:19],
+            "autor_ruc": extraer_ruc(autor.get("id")),
+            "autor": autor.get("name"),
+            # Se recorta a 2.000: la mediana es 263 y el maximo medido 1.499, asi que
+            # no se pierde nada real y se acota el peor caso de una fuente que cambie.
+            "pregunta": (q.get("description") or "")[:2000] or None,
+            "respuesta": (q.get("answer") or "")[:2000] or None,
+            "fecha_respuesta": (q.get("dateAnswered") or "")[:19] or None,
+        })
+
+    # Lotes: un proceso grande se adjudica por partes, y competir por un lote no es lo
+    # mismo que competir por el total.
+    for l in (tender.get("lots") or []):
+        destino.lotes.append({
+            "ocid": ocid,
+            "lote_id": l.get("id"),
+            "titulo": l.get("title"),
+            "monto": (l.get("value") or {}).get("amount"),
+            "tecnicas": ",".join(sorted((l.get("techniques") or {}).keys()))
+                        if isinstance(l.get("techniques"), dict) else None,
         })
 
 

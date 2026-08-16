@@ -1056,3 +1056,72 @@ las 18:00.
 era coherente y las cifras cuadraban. Faltaba **preguntarle al dato para qué se usa**. Un
 campo llamado `cierra` en un producto de oportunidades tiene que soportar la pregunta
 «¿me da tiempo?», y esa pregunta no se responde con una fecha.
+
+## D-035 — El detalle de lo abierto entra en Postgres; el resto sigue en Parquet
+
+**16 de agosto de 2026.** Matiza el invariante 1 y confirma el 3.
+
+La ficha de un proceso necesita sus ítems, sus oferentes, sus pujas y sus consultas. Eso
+solo viene por la ruta JSON y vivía únicamente en Parquet, donde la aplicación no puede
+consultarlo por `ocid`.
+
+### La alternativa que se descartó, y por qué
+
+Llamar al SERCOP en vivo al abrir la ficha. Es lo más barato en espacio y lo primero que
+uno propone. Medido contra su API antes de decidir:
+
+| Prueba | Resultado |
+|---|---|
+| 20 peticiones seguidas (0,3 s entre ellas) | **20 × HTTP 429** |
+| 8 peticiones a 30/min — la mitad del límite declarado | **8 × 429** |
+| 1 petición tras 9 minutos de pausa | **429** |
+| 1 petición más, 20 s después | **429** |
+
+Sigue bloqueado **doce minutos después**, con dos peticiones en ese rato. Y la respuesta
+no trae ninguna cabecera `X-RateLimit-*`, así que no hay forma de auto-regularse.
+
+En Vercel las funciones comparten IP: **un usuario abriendo cinco procesos dejaría la
+pantalla rota para todos los demás durante un cuarto de hora**, de forma intermitente y
+sin mensaje que lo explique. El invariante 3 existe exactamente para esto; ahora hay
+medición en vez de principio.
+
+### El tamaño, que es lo que decidió el alcance
+
+Medido sobre 1 264 procesos de subasta inversa —el método con más detalle—:
+
+| Bloque | Filas/proceso | Bytes/proceso |
+|---|---|---|
+| Ítems | 1,4 | 152 |
+| Oferentes | 4,1 | 203 |
+| Pujas | 3,4 | 204 |
+| **Consultas** | 7,8 | **5 824** |
+| Lotes | 1,0 | 142 |
+
+Las consultas son el **89% del peso**. La primera estimación —«unos 30 MB para los 15 800
+procesos abiertos»— salía **216 MB**, siete veces más, porque no contó el texto.
+
+Lo que salvó el diseño fue mirar el desglose por estado: de esos 15 800, **13 210 están en
+planificación y no tienen detalle que traer** — el JSON troceado por método no contiene ni
+un release en esa fase (D-030). El objetivo real son los **2 000 en estado `abierto`**:
+**~29 MB**, dentro de los 44 libres.
+
+### Decisión
+
+Cinco tablas con el detalle de los procesos **`abierto`**, reemplazadas enteras en cada
+pasada de la ingesta diaria. Cuando un proceso cierra, su detalle sale de Postgres y se
+queda en el Parquet, que es el archivo permanente. **La tabla no crece con el tiempo:
+gira.**
+
+Esto no rompe el invariante 1, lo acota: el invariante existe porque el detalle de 2,77
+millones de procesos no cabe en 460 MB. El de 2 000 sí, y es justo donde el cliente actúa.
+
+`detalle.py` pasa además a extraer **consultas y lotes**, que llevaban en el registro
+desde el principio sin que nadie los mirara. Las consultas son el único sitio del dato
+abierto donde se lee **por qué** se descalifica a un oferente, y no se pueden buscar entre
+procesos en ningún otro lugar — ni en la ficha del propio SERCOP.
+
+### Lo que enseña
+
+Estimé 30 MB de memoria y eran 216. La diferencia entera estaba en un campo de texto que
+no había medido. **Una estimación de espacio sin medir el campo más grande no es una
+estimación**, y aquí habría significado descubrirlo al llenar la base.

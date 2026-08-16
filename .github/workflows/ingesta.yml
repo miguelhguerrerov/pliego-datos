@@ -45,6 +45,20 @@ jobs:
             python src/ingesta.py --incremental
           fi
 
+      - name: Detalle de los procesos abiertos
+        # La ficha de un proceso necesita items, oferentes, pujas y consultas, y eso solo
+        # viene por la ruta JSON. Se trae SOLO para lo que sigue abierto (~2.000 de
+        # 280.000) y se reemplaza entero en cada pasada: cuando un proceso cierra, su
+        # detalle sale de Postgres y se queda en el Parquet. Ver docs/decisiones.md D-035.
+        #
+        # No falla la ingesta si falla esto: el radar y las fichas no dependen del
+        # detalle, y perder la ficha de proceso de un dia no justifica marcar el mes
+        # como no cargado.
+        continue-on-error: true
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python src/abiertos.py
+
       - name: Informe de cobertura
         # Informativo mientras el backfill este en curso: falla solo si faltan meses
         # de la ventana operativa, que es lo que este trabajo mantiene.
