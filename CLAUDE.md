@@ -293,7 +293,7 @@ correspondiente**, no después.
 **Flujos programados, corriendo solos:** ingesta 09:30 UTC, agregados 09:48. Verdes.
 
 **Servicios:** GitHub listo (**el token caduca el 13 de septiembre de 2026**); Vercel
-Hobby con `pliego` desplegado; Resend con `darkmelon.com` verificado pero **sin DMARC**;
+Hobby con `pliego` desplegado; Resend con `darkmelon.com` verificado (DKIM y SPF correctos, region sa-east-1); **DMARC existe pero es `p=none` y sus informes van a Brevo**, un proveedor anterior;
 DeepInfra verificado y en uso.
 
 **Pendientes con fecha:** registrar `pliego.ec` (35 USD/año); rotar las siete credenciales
