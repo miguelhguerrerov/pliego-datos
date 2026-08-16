@@ -24,6 +24,11 @@
 
 begin;
 
+-- La vista se borra ANTES de cambiar el tipo: Postgres se niega con
+--   «cannot alter type of a column used by a view or rule»
+-- y no hay forma de forzarlo. Se recrea abajo, ya con la comparacion corregida.
+drop view if exists v_radar_resumen;
+
 alter table proceso_resumen
     alter column cierra type timestamptz using cierra::timestamptz,
     add column if not exists publicado       timestamptz,
@@ -46,7 +51,7 @@ create index if not exists idx_proceso_cierra
 -- La vista del radar comparaba `cierra` contra `current_date`. Con hora hay que comparar
 -- contra `now()`, o un proceso que cierra hoy a las 09:00 seguiria contando como abierto
 -- a las 18:00.
-create or replace view v_radar_resumen as
+create view v_radar_resumen as
 select
     count(*)                                              as procesos,
     coalesce(sum(referencial), 0)                         as en_juego,
@@ -55,5 +60,7 @@ select
     count(*) filter (where cierra between now() and now() + interval '7 days') as cierran_semana
 from proceso_resumen
 where estado in ('planificacion', 'abierto');
+
+grant select on v_radar_resumen to anon, authenticated;
 
 commit;
