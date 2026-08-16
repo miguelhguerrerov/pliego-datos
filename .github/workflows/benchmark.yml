@@ -9,6 +9,12 @@ on:
   schedule:
     - cron: "0 6 * * 1"      # lunes
   workflow_dispatch:
+    inputs:
+      seco:
+        description: "Calcular y mostrar, sin escribir"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   benchmark:
@@ -27,9 +33,10 @@ jobs:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: python src/precios.py
+        run: python src/precios.py ${{ inputs.seco && '--seco' || '' }}
 
       - name: Consultas de producto
+        if: ${{ !inputs.seco }}
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: python -m pytest pruebas/test_producto.py -q
