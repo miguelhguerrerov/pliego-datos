@@ -106,7 +106,7 @@ Este documento es el tablero. El *por qué* de cada decisión está en `decision
 
 | Actividad | Estado | Nota |
 |---|---|---|
-| **Correo propio en Supabase (SMTP de Resend)** | **Pendiente** | El remitente por omisión limita a ~4 enlaces/hora y no lleva la marca |
+| Correo propio en Supabase (SMTP de Resend) | Hecho | Con `site_url` y lista de permitidos: los enlaces iban a localhost |
 | Cobro por transferencia + factura electrónica | Pendiente | Stripe no opera en Ecuador; la activación es manual y hay pantalla para pedirla |
 | PayPhone / Kushki | Pendiente | Después del primer cliente |
 | Umbral de validación (doc 12) | Pendiente | Congelar antes de medir |

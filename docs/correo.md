@@ -10,28 +10,48 @@ distinta y tienen cuotas distintas.
 El correo de autenticación lo genera Supabase Auth cuando alguien pide entrar. Nuestro
 código nunca lo toca.
 
-**Hoy sale por el remitente por omisión de Supabase**, que tiene dos problemas:
+### Estado: configurado el 16 de agosto de 2026
 
-- Límite de unos **4 correos por hora** para todo el proyecto. Sirve para probar y no
-  para tener usuarios.
-- Llega con remitente de Supabase, no de Pliego. En un producto que se vende a empresas,
-  eso resta más de lo que parece.
-
-**La solución es SMTP propio, y es configuración del panel, no código.** En
-*Project Settings → Auth → SMTP Settings*:
-
-| Campo | Valor |
+| Ajuste | Valor |
 |---|---|
-| Host | `smtp.resend.com` |
-| Puerto | `465` |
-| Usuario | `resend` |
-| Contraseña | la clave de API de Resend |
-| Remitente | `pliego@darkmelon.com` |
+| `site_url` | `https://pliego-app-liart.vercel.app` |
+| `uri_allow_list` | las dos URL de Vercel y `http://localhost:3000/**` |
+| `smtp_host` / puerto | `smtp.resend.com` / `465` |
+| `smtp_user` | `resend` (la contraseña es la clave de API) |
+| Remitente | `Pliego <pliego@darkmelon.com>` |
+| Asunto y plantilla | en español, con la tipografía y los colores del producto |
 
-**Esto no puede vivir en una migración** porque no es estructura de base de datos. Es la
-única pieza del sistema que se configura a mano, y por eso está escrita aquí: si alguien
-migra el proyecto a otra cuenta de Supabase, esto se pierde en silencio y el síntoma será
-«nadie puede entrar», no «falta el SMTP».
+### El fallo que lo destapó
+
+Los enlaces llegaban apuntando a **`localhost:3000`**. Dos ajustes, y el segundo es el que
+no se ve:
+
+1. `site_url` venía con el valor por omisión de Supabase, `http://localhost:3000`.
+2. `uri_allow_list` estaba **vacía**. Eso importa más de lo que parece: el código pasa un
+   `emailRedirectTo` con el origen real, pero **Supabase lo ignora si no está en la lista
+   de permitidos y cae al `site_url`**. Es decir: el redirect correcto se estaba pidiendo
+   y descartando en silencio.
+
+Sin el punto 2, arreglar solo el `site_url` habría funcionado por casualidad —porque
+coincidiría con el destino— y habría vuelto a romperse al añadir un dominio propio.
+
+### Por qué esto está escrito aquí y no en una migración
+
+No es estructura de base de datos, así que `migraciones/*.sql` no lo alcanza. **Es la
+única pieza del sistema que vive solo en la configuración de un servicio.** Si el
+proyecto se migra a otra cuenta de Supabase (D-003), esto se pierde sin ruido y el
+síntoma será «nadie puede entrar», no «falta el SMTP».
+
+Se puede reaplicar entero por la API de gestión, sin tocar el panel:
+
+```bash
+curl -X PATCH -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN"   -H "Content-Type: application/json"   "https://api.supabase.com/v1/projects/$REF/config/auth"   -d '{"site_url":"...","uri_allow_list":"...","smtp_host":"smtp.resend.com",
+       "smtp_port":"465","smtp_user":"resend","smtp_pass":"...",
+       "smtp_admin_email":"pliego@darkmelon.com","smtp_sender_name":"Pliego"}'
+```
+
+`smtp_port` va **como cadena**: pasarlo como número devuelve
+`Invalid input: expected string, received number`.
 
 ---
 
