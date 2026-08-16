@@ -37,3 +37,31 @@ def test_el_mes_de_la_fila_es_el_del_archivo():
         )
     # Y la fecha real se conserva: es lo que se muestra y lo que ordena el radar.
     assert str(filas[1][1]) == "2026-05-20"
+
+
+# --- D-038: la ventana solo se aplicaba en un sentido ---------------------------
+
+def test_la_poda_calcula_bien_el_limite_de_la_ventana():
+    """`_dentro_de_ventana` impedía CARGAR un mes viejo, pero nada borraba los que
+    envejecían dentro de la tabla. Con 24 meses no se notó porque el backfill los cargó
+    todos de golpe; al bajar a 12, sin poda la tabla se queda igual y el cambio no sirve.
+
+    Una ventana que solo se aplica en un sentido no es una ventana.
+
+    Aquí se comprueba la aritmética del límite, que es donde se rompen estas cuentas: en
+    enero hay que cruzar al año anterior."""
+    import datetime as dt
+
+    from ingesta import VENTANA_RESUMEN_MESES, _dentro_de_ventana
+
+    hoy = dt.date(2026, 8, 16)
+    # El mes en curso y los 11 anteriores entran; el doce se queda fuera.
+    assert _dentro_de_ventana(2026, 8, hoy)
+    assert _dentro_de_ventana(2025, 9, hoy)
+    assert not _dentro_de_ventana(2025, 8, hoy)
+    assert VENTANA_RESUMEN_MESES == 12
+
+    # Y cruzando el año, que es donde estas cuentas se rompen.
+    enero = dt.date(2026, 1, 10)
+    assert _dentro_de_ventana(2025, 2, enero)
+    assert not _dentro_de_ventana(2025, 1, enero)

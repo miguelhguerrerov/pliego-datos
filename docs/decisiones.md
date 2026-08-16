@@ -1237,3 +1237,74 @@ La pérdida ocurría **en la siguiente carga, de otro mes**.
 La regla que faltaba: **dos tablas que derivan del mismo dato tienen que cuadrar entre
 sí, y compararlas es barato**. `select count(*)` contra `sum(n_procesos)` habría gritado
 desde el primer día — y hay ahora una prueba que lo hace.
+
+## D-038 — Ventana de 12 meses, y la alarma deja de fallar sin motivo
+
+**16 de agosto de 2026.**
+
+Tres cosas que salieron del mismo sitio: la base llegó a **552,5 MB**, por encima del
+techo de 500 del plan gratuito de Supabase.
+
+### Por qué creció
+
+No fue el detalle de procesos abiertos que se añadió el día antes: esas cinco tablas
+juntas no llegan a 1,5 MB. Fue **D-037**. Al arreglar la pérdida silenciosa del 14%,
+`proceso_resumen` pasó de 280 480 a **340 209 filas** y de 7 346 a **24 213 proveedores**.
+
+Recuperar datos correctos cuesta espacio. El reparto:
+
+| Tabla | MB |
+|---|---|
+| `proceso_resumen` | 266,5 |
+| `hecho_mes` | 165,3 |
+| resto | ~120 |
+
+### La ventana baja de 24 a 12 meses
+
+Con los datos completos, 24 meses ya no caben en 460 MB. Doce siguen cubriendo de sobra
+lo que el producto necesita: ningún proceso vive más de 45 días abierto (D-036), y la
+ficha de proveedor muestra actividad reciente. El histórico de once años **no se toca** —
+vive en `hecho_mes` y en los Parquet.
+
+**Y faltaba la mitad de la ventana.** `_dentro_de_ventana` impedía *cargar* un mes viejo,
+pero nada borraba los que envejecían dentro de la tabla. Con 24 meses no se notó porque
+el backfill los cargó todos de golpe; al bajar a 12, sin poda el cambio no habría servido
+de nada. **Una ventana que solo se aplica en un sentido no es una ventana.**
+
+### La alarma estaba en el sitio equivocado
+
+Las dos ejecuciones programadas del día fallaron con `PresupuestoExcedido`, **después de
+haber hecho todo su trabajo**: la de agregados escribió 264 352 + 168 427 + 256 + 77 704
+filas y murió en su última línea. Un correo de fallo cada mañana por un trabajo correcto.
+
+La tentación era silenciar el aviso. **No se silencia una alarma: se le quita el motivo.**
+La ingesta ahora poda la ventana y compacta —mantenimiento que siempre hizo falta y nadie
+hacía— y *después* comprueba. Si tras eso la base sigue pasada, es un problema de verdad
+y el trabajo debe fallar.
+
+### La portada mostraba ceros
+
+`v_portada` expiraba (`57014`) porque la migración 0024 —mía, del día anterior— puso
+`v_radar_resumen` detrás de `v_radar`, y `v_portada` la invoca **dos veces**, una por
+columna. Ahora se evalúa una sola vez con un `cross join lateral`.
+
+Pero el fallo de fondo estaba en la aplicación:
+
+```ts
+total: Number(data?.procesos_historicos ?? 0)
+```
+
+Cuando la consulta falla, `data` es nulo y la portada afirma **«0 procesos desde 2015»**.
+Un visitante ve un producto vacío y se va. **Un cero es una afirmación**: decirlo cuando
+en realidad no se pudo preguntar no es degradar con elegancia, es mentir con buena
+tipografía — exactamente lo que costó D-026.
+
+Ahora lanza excepción y hay una pantalla de error que dice qué pasó. Un hueco visible se
+arregla; una cifra falsa que parece buena no se detecta hasta que alguien la usa.
+
+### Y la ventana estaba escrita en ocho sitios
+
+Ocho pantallas decían «los últimos 24 meses» sobre datos que iban a pasar a 12. Ahora hay
+una constante, `VENTANA_MESES`, y un texto derivado. El benchmark de precios mantiene sus
+24 meses **a propósito**: lee de los Parquet, no de Postgres, y son dos preguntas
+distintas.

@@ -27,7 +27,16 @@ from entidades import extraer_ruc  # noqa: E402
 from normaliza import ErrorContrato, MesNormalizado, estado_de_tag, metodo_base, normalizar, numero  # noqa: E402
 
 CACHE = Path(".cache")
-VENTANA_RESUMEN_MESES = 24  # primera válvula: bajar a 18 si la base supera 420 MB
+# La ventana del radar, en meses. **Bajada de 24 a 12 el 16 de agosto de 2026.**
+#
+# El presupuesto de 460 MB dejo de dar cuando D-037 recupero el 14% de los procesos que
+# se perdian: `proceso_resumen` paso de 280.480 a 340.209 filas y la base a 552 MB, por
+# encima del techo de 500 del plan gratuito. Ver docs/decisiones.md D-038.
+#
+# Doce meses siguen cubriendo de sobra el radar —ningun proceso vive mas de 45 dias
+# abierto (D-036)— y la ficha de proveedor, que es lo que mira un cliente. El historico
+# de once anios no se toca: vive en `hecho_mes` y en los Parquet.
+VENTANA_RESUMEN_MESES = 12
 
 
 def meses_entre(desde: str, hasta: str) -> list[tuple[int, int]]:
@@ -209,6 +218,29 @@ def a_hecho_mes(filas_resumen: list[tuple], anio: int, mes: int) -> list[tuple]:
     ]
 
 
+def podar_ventana(con, hoy: dt.date | None = None) -> int:
+    """Borra de `proceso_resumen` lo que ya cayo fuera de la ventana.
+
+    **Esto faltaba.** La ventana solo se respetaba al insertar: `_dentro_de_ventana`
+    impedia cargar un mes viejo, pero nada borraba los que envejecian dentro de la tabla.
+    Con 24 meses eso no se noto porque el backfill los cargo todos de golpe; al bajar a
+    12, sin este paso la tabla se queda igual de grande y el cambio no sirve de nada.
+
+    Una ventana que solo se aplica en un sentido no es una ventana.
+    """
+    hoy = hoy or dt.date.today()
+    total = hoy.year * 12 + (hoy.month - 1) - (VENTANA_RESUMEN_MESES - 1)
+    limite = (total // 12, total % 12 + 1)
+    with con.cursor() as cur:
+        cur.execute("delete from proceso_resumen where (anio, mes) < (%s, %s)", limite)
+        n = cur.rowcount
+    con.commit()
+    if n:
+        print(f"  podadas {n:,} filas anteriores a {limite[0]}-{limite[1]:02d} "
+              f"(ventana de {VENTANA_RESUMEN_MESES} meses)")
+    return n
+
+
 def _dentro_de_ventana(anio: int, mes: int, hoy: dt.date | None = None) -> bool:
     """proceso_resumen guarda solo la ventana del radar. Cargar los once años ahí
     reventaría el presupuesto de 500 MB: los meses viejos van a hecho_mes y a Parquet."""
@@ -315,9 +347,27 @@ def main() -> int:
             resumen[estado] = resumen.get(estado, 0) + 1
 
         if con:
-            from carga import PRESUPUESTO_MB, verificar_presupuesto
+            from carga import PRESUPUESTO_MB, tamano_mb, verificar_presupuesto
+
+            # El orden importa, y antes estaba mal. La comprobacion de presupuesto era lo
+            # primero y lo unico, asi que un trabajo que habia hecho TODO bien moria en
+            # su ultima linea y mandaba un correo de fallo cada manana.
+            #
+            # No se silencia la alarma: se le quita el motivo. Se poda lo que ya salio de
+            # la ventana y se compacta lo que el borrado y copia dejo muerto, que es
+            # trabajo de mantenimiento que siempre hizo falta y nadie hacia. Si despues
+            # de eso la base sigue pasada, entonces si es un problema de verdad y el
+            # trabajo tiene que fallar.
+            podar_ventana(con)
+
+            antes = tamano_mb(con)
+            from clasifica import compactar
+            compactar("proceso_resumen", "hecho_mes", "entidad", "entidad_ano",
+                      "relacion", "entidad_nombre")
+            print(f"\nbase: {antes} -> {tamano_mb(con)} MB")
+
             mb = verificar_presupuesto(con)
-            print(f"\nbase: {mb} MB de {PRESUPUESTO_MB} presupuestados")
+            print(f"dentro del presupuesto: {mb} MB de {PRESUPUESTO_MB}")
     finally:
         if con:
             ctx.__exit__(None, None, None)
