@@ -45,6 +45,25 @@ jobs:
             python src/ingesta.py --incremental
           fi
 
+      - name: Refrescar las vistas materializadas
+        # La portada y el indice de mercados se calculan una vez y se leen muchas. Si
+        # nadie las refresca dan las cifras de ayer sin decir que son de ayer, que es
+        # justo el tipo de mentira silenciosa que este proyecto ya ha pagado.
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "src")
+          from carga import conexion
+          with conexion() as con:
+              with con.cursor() as cur:
+                  cur.execute("refresh materialized view concurrently v_mercado")
+                  cur.execute("refresh materialized view concurrently v_portada")
+              con.commit()
+          print("v_mercado y v_portada refrescadas")
+          PY
+
       - name: Detalle de los procesos abiertos
         # La ficha de un proceso necesita items, oferentes, pujas y consultas, y eso solo
         # viene por la ruta JSON. Se trae SOLO para lo que sigue abierto (~2.000 de

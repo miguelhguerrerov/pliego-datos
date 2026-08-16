@@ -43,8 +43,9 @@ jobs:
           with conexion() as con:
               with con.cursor() as cur:
                   cur.execute("refresh materialized view concurrently v_mercado")
+                  cur.execute("refresh materialized view concurrently v_portada")
               con.commit()
-          print("v_mercado refrescada")
+          print("v_mercado y v_portada refrescadas")
           PY
 
       - name: Guardias sobre la base cargada
