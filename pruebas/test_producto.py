@@ -460,13 +460,37 @@ def test_la_funcion_de_huerfanos_no_devuelve_nada_sin_plan(con):
 
 def test_el_alta_de_suscriptor_no_regala_plan(con):
     """Entrar es gratis y no da acceso a nada de pago. Si el disparador diera de alta en
-    `profesional`, bastaría un correo válido para llevarse el producto entero."""
-    mal = _uno(con, "select count(*) from suscriptor where plan <> 'gratuito'")
-    total = _uno(con, "select count(*) from suscriptor")
-    if not total:
-        pytest.skip("sin suscriptores todavía")
-    assert mal == 0 or mal < total, (
-        "todos los suscriptores tienen plan de pago: revisa que el alta sea 'gratuito'"
+    `profesional`, bastaría un correo válido para llevarse el producto entero.
+
+    **Esta prueba nació mal y saltó en falso el mismo día.** Comprobaba la población:
+    «no todos los suscriptores tienen plan de pago». Con un único suscriptor, que lo
+    tenía legítimamente, la condición se cumplía y la alarma sonaba sin motivo — que es
+    justo lo que la regla 5 de docs/metodo.md prohíbe, porque una alarma que salta sin
+    razón entrena a ignorarla.
+
+    Se comprueba el MECANISMO: qué plan asigna el disparador y qué dice el valor por
+    omisión de la columna. Eso es invariante; la población cambia con cada venta."""
+    cuerpo = _uno(con, """
+        select pg_get_functiondef(oid) from pg_proc
+        where proname = 'crear_suscriptor' limit 1
+    """)
+    if not cuerpo:
+        pytest.skip("sin la migración 0018")
+    assert "'gratuito'" in cuerpo, (
+        "el disparador de alta no asigna plan 'gratuito': bastaría un correo válido "
+        "para llevarse el producto entero"
+    )
+    assert "'profesional'" not in cuerpo and "'institucional'" not in cuerpo, (
+        "el disparador de alta menciona un plan de pago"
+    )
+
+    por_omision = _uno(con, """
+        select column_default from information_schema.columns
+        where table_name = 'suscriptor' and column_name = 'plan'
+    """)
+    assert por_omision and "gratuito" in por_omision, (
+        f"el valor por omisión de `plan` es {por_omision!r}: un insert que olvide la "
+        f"columna regalaría el plan"
     )
 
 
