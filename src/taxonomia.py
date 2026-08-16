@@ -280,8 +280,28 @@ def resolver_nombres(descripciones: dict[str, Counter], bautizador=bautizar,
 
 # --- escritura ------------------------------------------------------------------
 
+def texto_representativo(descripciones: Counter, n: int = 6) -> str:
+    """Las descripciones oficiales mas frecuentes de una subclase, juntas.
+
+    Es lo que se compara contra el objeto contractual. El nombre corto no sirve: un
+    rotulo de dos palabras y un parrafo administrativo no se parecen aunque hablen de lo
+    mismo, y por eso el 86% de los textos se quedaba sin categoria. Ver la 0016.
+    """
+    vistas, salida = set(), []
+    for d, _ in descripciones.most_common(n * 3):
+        clave = d.strip().lower()[:60]
+        if clave in vistas:
+            continue
+        vistas.add(clave)
+        salida.append(d.strip())
+        if len(salida) >= n:
+            break
+    return " · ".join(salida)[:900]
+
+
 def escribir(con, nombres: dict[str, str], por_ocid: dict[str, str],
-             cpc_completo: dict[str, str]) -> tuple[int, int]:
+             cpc_completo: dict[str, str],
+             descripciones: dict[str, Counter] | None = None) -> tuple[int, int]:
     """Sustituye la taxonomía y recategoriza los procesos.
 
     La asignación va por tabla temporal y un solo `update ... from`: 280.020 procesos
@@ -311,6 +331,15 @@ def escribir(con, nombres: dict[str, str], por_ocid: dict[str, str],
             )
         cur.execute("select cpc, id from categoria where cpc is not null")
         id_de = dict(cur.fetchall())
+
+        # La descripcion representativa se refresca siempre: el nombre se conserva por
+        # estabilidad, pero esto es material de comparacion, no rotulo.
+        if descripciones:
+            cur.executemany(
+                "update categoria set descripcion = %s where cpc = %s",
+                [(texto_representativo(descripciones[c]), c)
+                 for c in descripciones if c in id_de],
+            )
 
         # 2. La asignación.
         cur.execute("create temp table asignacion_tmp "
@@ -389,7 +418,7 @@ def main() -> int:
     from carga import conexion
 
     with conexion() as con:
-        n_cat, n_proc = escribir(con, nombres, por_ocid, cpc_completo)
+        n_cat, n_proc = escribir(con, nombres, por_ocid, cpc_completo, descripciones)
         print(f"\ncategorías: {n_cat:,}  ·  procesos recategorizados: {n_proc:,}")
 
         # El referencial que el CSV no trae para subasta inversa: el 22,1% de los

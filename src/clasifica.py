@@ -460,7 +460,8 @@ def asignar_por_texto(con, umbral: float = UMBRAL_CERCANIA) -> tuple[int, int]:
     import numpy as np
 
     with con.cursor() as cur:
-        cur.execute("select id, nombre, cpc from categoria where cpc is not null")
+        cur.execute("select id, nombre, cpc, coalesce(descripcion, nombre) "
+                    "from categoria where cpc is not null")
         cats = cur.fetchall()
         cur.execute("""
             select ocid, objeto from proceso_resumen
@@ -481,7 +482,8 @@ def asignar_por_texto(con, umbral: float = UMBRAL_CERCANIA) -> tuple[int, int]:
     print(f"  {len(pendientes):,} procesos sin categoria · {len(unicos):,} textos unicos "
           f"· {len(cats):,} categorias")
 
-    V = np.asarray(embeber([c[1] for c in cats]), dtype="float32")
+    # Nombre Y descripcion oficial: el rotulo solo no se parece a un objeto contractual.
+    V = np.asarray(embeber([f"{c[1]}. {c[3]}" for c in cats]), dtype="float32")
     V /= np.linalg.norm(V, axis=1, keepdims=True) + 1e-9
     T = np.asarray(embeber(unicos), dtype="float32")
     T /= np.linalg.norm(T, axis=1, keepdims=True) + 1e-9
@@ -489,6 +491,14 @@ def asignar_por_texto(con, umbral: float = UMBRAL_CERCANIA) -> tuple[int, int]:
     S = T @ V.T
     mejor = S.argmax(axis=1)
     parecido = S.max(axis=1)
+
+    # La distribucion ANTES de aplicar el umbral. La primera vez se eligio 0,55 a ojo y
+    # dejo fuera al 86%: un umbral se mide, no se intuye.
+    cortes = [0.35, 0.45, 0.55, 0.65, 0.75]
+    print("  parecido con la mejor categoria:")
+    for c in cortes:
+        print(f"    >= {c}: {int((parecido >= c).sum()):,} textos "
+              f"({(parecido >= c).mean():.0%})")
 
     asignaciones = []
     flojos = 0
