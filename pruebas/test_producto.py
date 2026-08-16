@@ -563,3 +563,48 @@ def test_el_resumen_de_mercados_no_esta_rancio(con):
         f"la vista tiene {materializadas} categorías y hay {vivas} con procesos: "
         f"falta un `refresh materialized view v_mercado`."
     )
+
+
+# --- D-036: el radar mostraba procesos de hace un año como oportunidades ---------
+
+def test_el_radar_no_muestra_lo_que_ya_no_se_puede_ofertar(con):
+    """Lo reportó el cliente, dos veces. El radar mostraba 15.210 procesos y **el 78% no
+    se podía ofertar**: 386 con fecha de cierre ya pasada y 11.407 sin cierre declarado y
+    con más de un año de antigüedad — había procesos etiquetados «abierto» desde julio de
+    2025.
+
+    La etiqueta `tag` es la máquina de estados del proceso, pero la fuente no siempre
+    publica el cierre, así que uno se queda en `abierto` para siempre aunque terminara
+    hace un año. Ver D-036."""
+    if not _uno(con, "select count(*) from v_radar"):
+        pytest.skip("sin la migración 0024")
+
+    cerrados = _uno(con, "select count(*) from v_radar where cierra < now()")
+    assert cerrados == 0, (
+        f"{cerrados} procesos del radar tienen fecha de cierre ya pasada. "
+        f"Una oportunidad que no se puede ofertar no es una oportunidad."
+    )
+
+    viejos = _uno(con, """
+        select count(*) from v_radar
+        where cierra is null and desde_cuando < now() - interval '60 days'
+    """)
+    assert viejos == 0, (
+        f"{viejos} procesos del radar llevan más de 60 días sin cierre declarado. "
+        f"Medido: ningún proceso vive más de 45 días abierto."
+    )
+
+
+def test_la_cabecera_del_radar_cuadra_con_su_tabla(con):
+    """El fallo que erosiona la confianza más rápido que un dato ausente: la cifra de
+    arriba dice 15.210 y la tabla de abajo muestra 3.417.
+
+    Pasó porque la regla vivía en la consulta de cada pantalla y el resumen se calculaba
+    aparte. Ahora el resumen lee de la misma vista, y esta prueba lo fija."""
+    if not _uno(con, "select count(*) from v_radar"):
+        pytest.skip("sin la migración 0024")
+    tabla = _uno(con, "select count(*) from v_radar")
+    cabecera = _uno(con, "select procesos from v_radar_resumen")
+    assert tabla == cabecera, (
+        f"la cabecera dice {cabecera:,} y la tabla tiene {tabla:,}"
+    )

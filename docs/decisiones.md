@@ -1125,3 +1125,61 @@ procesos en ningún otro lugar — ni en la ficha del propio SERCOP.
 Estimé 30 MB de memoria y eran 216. La diferencia entera estaba en un campo de texto que
 no había medido. **Una estimación de espacio sin medir el campo más grande no es una
 estimación**, y aquí habría significado descubrirlo al llenar la base.
+
+## D-036 — El radar solo muestra lo que todavía se puede ofertar
+
+**16 de agosto de 2026.** Lo reportó el cliente, dos veces.
+
+El radar es «la razón para volver cada día» (D-008) y mostraba 15 210 procesos como
+oportunidades. Al medirlos:
+
+| | |
+|---|---|
+| Con fecha de cierre **futura** | **0** |
+| Con fecha de cierre **ya pasada** | 386 |
+| Sin cierre declarado, de hace menos de 45 días | 3 417 |
+| Sin cierre declarado y **viejos** | **11 407** |
+
+**El 78% no se podía ofertar.** Había procesos etiquetados `abierto` desde julio de 2025:
+trece meses.
+
+### La causa
+
+El campo `tag` es la máquina de estados del proceso, y esa parte es correcta. Lo que no
+es cierto es la inferencia que hacíamos encima: **que `abierto` signifique «se puede
+ofertar hoy»**. La fuente no siempre publica el cierre —solo el 11% de los procesos
+convocados lo declara—, así que un proceso se queda en `abierto` para siempre aunque
+terminara hace un año.
+
+### La ventana sale de medir
+
+Sobre los 1 512 procesos que declaran inicio y cierre:
+
+| Mediana | p90 | Máximo |
+|---|---|---|
+| **6,7 días** | 14,0 | **44,8** |
+
+Ninguno vivió más de 45 días. Se usan **60** como margen sobre el máximo observado y
+sobre el retraso de publicación de la propia fuente.
+
+### Decisión
+
+Una vista, `v_radar`, con la regla en un solo sitio: cierre futuro declarado, **o** sin
+cierre y con menos de 60 días. Y `v_radar_resumen` pasa a **leer de esa vista** en vez de
+calcular aparte.
+
+Eso segundo importa tanto como lo primero. Con la regla repetida en cada consulta, tarde
+o temprano la cabecera dice 15 210 y la tabla de debajo muestra 3 417 — y **una cifra que
+no cuadra con lo que hay justo debajo destruye la confianza más rápido que un dato
+ausente**. Hay una prueba que compara las dos.
+
+### Lo que enseña
+
+Ninguna comprobación podía atrapar esto, porque el dato era correcto: los procesos
+existían, sus estados venían de la fuente y las cifras cuadraban entre sí. **Lo que
+fallaba era la promesa de la pantalla**, no el dato que la llenaba.
+
+Es el mismo patrón que D-034: un campo llamado `cierra` tiene que aguantar la pregunta
+«¿me da tiempo?», y una pantalla llamada radar tiene que aguantar «¿puedo presentarme a
+esto?». Preguntarle al dato para qué se usa no es una fase del trabajo — es la única
+prueba que encuentra esta clase de fallo.
