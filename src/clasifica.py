@@ -512,8 +512,7 @@ def asignar_por_texto(con, umbral: float = UMBRAL_CERCANIA,
         for bajo, alto in ((0.35, 0.45), (0.45, 0.55), (0.55, 0.65), (0.65, 1.01)):
             indices = [i for i in range(len(unicos))
                        if bajo <= parecido[i] < alto]
-            print(f"
-  --- parecido {bajo}-{alto}: {len(indices):,} textos ---")
+            print(f"\n  --- parecido {bajo}-{alto}: {len(indices):,} textos ---")
             for i in rnd.sample(indices, min(6, len(indices))):
                 print(f"    [{parecido[i]:.2f}] {unicos[i][:78]}")
                 print(f"           -> {cats[int(mejor[i])][1]}")
