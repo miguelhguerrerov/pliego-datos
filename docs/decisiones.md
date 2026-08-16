@@ -1018,3 +1018,41 @@ grandes, que son justo las que le importan al cliente.
 Regla que faltaba y ahora es prueba: **una cifra agregada se comprueba contra una
 magnitud conocida del mundo**, no solo contra su propia forma. Un mercado por encima del
 PIB del país es imposible por construcción, y eso se puede afirmar en un `assert`.
+
+## D-034 — Las fechas de un proceso abierto llevan hora
+
+**16 de agosto de 2026.** Lo señaló el cliente, no una prueba.
+
+`cierra` se guardaba como **fecha**: la ingesta recortaba el texto de la fuente a diez
+caracteres. La fuente publica `2026-07-09T14:00:00-05:00` y nosotros escribíamos
+`2026-07-09`.
+
+Para quien tiene que presentar una oferta, esa diferencia es el producto:
+
+> «Cierra el 9» y «cierra el 9 a las 14:00» son decisiones distintas. En la primera se
+> prepara una oferta; en la segunda se descarta o se corre.
+
+Estábamos redondeando a peor y sin decirlo. Medido sobre 2026-07: de 5 717 procesos con
+`tender`, **1 987 traen hora de publicación y 652 hora de cierre**, todas reales y en
+horario de Ecuador. No es un campo anecdótico.
+
+**Decisión.** `cierra` pasa a `timestamptz`, y se añaden dos fechas que la fuente da y no
+guardábamos:
+
+| Columna | Qué es | Por qué importa |
+|---|---|---|
+| `publicado` | Inicio del periodo de ofertas | Única forma de medir si el radar llega a tiempo |
+| `preguntas_hasta` | Cierre del periodo de preguntas | En la práctica, la **primera** fecha que un oferente debe respetar |
+
+La interfaz muestra minutos por debajo de una hora, horas por debajo de dos días, y días
+por encima. Un «1 d» donde quedan 27 horas y un «1 d» donde quedan 47 son lo mismo en
+pantalla y no lo son en la realidad.
+
+`v_radar_resumen` comparaba `cierra` contra `current_date`; con hora hay que comparar
+contra `now()`, o un proceso que cerró hoy a las 09:00 seguiría contando como abierto a
+las 18:00.
+
+**Lo que enseña.** Ninguna prueba podía detectar esto: la columna estaba poblada, el tipo
+era coherente y las cifras cuadraban. Faltaba **preguntarle al dato para qué se usa**. Un
+campo llamado `cierra` en un producto de oportunidades tiene que soportar la pregunta
+«¿me da tiempo?», y esa pregunta no se responde con una fecha.

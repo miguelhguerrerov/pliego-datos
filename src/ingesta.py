@@ -43,6 +43,25 @@ def meses_entre(desde: str, hasta: str) -> list[tuple[int, int]]:
     return salida
 
 
+def _momento(texto: str | None) -> dt.datetime | None:
+    """Un instante de la fuente, con su zona. `None` si no lo hay o viene mal.
+
+    La fuente entrega `2026-07-09T14:00:00-05:00`. Guardarlo entero y no recortado es lo
+    que permite decir «quedan 3 horas» en vez de «cierra hoy». Ver D-034.
+    """
+    if not texto:
+        return None
+    try:
+        return dt.datetime.fromisoformat(str(texto).strip())
+    except ValueError:
+        # Algunas filas traen solo la fecha. Vale como instante a medianoche, pero se
+        # deja constancia de que la hora no es un dato: es el valor por omision.
+        try:
+            return dt.datetime.fromisoformat(str(texto).strip()[:10])
+        except ValueError:
+            return None
+
+
 def a_proceso_resumen(mes: MesNormalizado) -> list[tuple]:
     """Aplana el mes a filas de proceso_resumen.
 
@@ -87,11 +106,12 @@ def a_proceso_resumen(mes: MesNormalizado) -> list[tuple]:
             fecha = dt.date.fromisoformat(fecha_txt)
         except ValueError:
             continue
-        cierra_txt = (t.get("tenderPeriod_endDate") or "")[:10]
-        try:
-            cierra = dt.date.fromisoformat(cierra_txt) if cierra_txt else None
-        except ValueError:
-            cierra = None
+        # CON HORA. Recortar a diez caracteres convertia «cierra hoy a las 14:00» en
+        # «cierra hoy», que para quien tiene que presentar una oferta es la diferencia
+        # entre tres horas y un dia. Ver docs/decisiones.md D-034.
+        cierra = _momento(t.get("tenderPeriod_endDate"))
+        publicado = _momento(t.get("tenderPeriod_startDate"))
+        preguntas = _momento(t.get("enquiryPeriod_endDate"))
 
         filas.append((
             ocid,
@@ -115,6 +135,8 @@ def a_proceso_resumen(mes: MesNormalizado) -> list[tuple]:
             # expediente, que es el mismo fallo de D-016 por otra puerta.
             (t.get("description") or razon.get(ocid) or t.get("title") or "")[:200] or None,
             cierra,
+            publicado,
+            preguntas,
         ))
     return filas
 
@@ -122,7 +144,7 @@ def a_proceso_resumen(mes: MesNormalizado) -> list[tuple]:
 COLUMNAS_RESUMEN = [
     "ocid", "fecha", "anio", "mes", "estado", "metodo", "cpc", "categoria_id",
     "comprador_ruc", "proveedor_ruc", "referencial", "adjudicado", "provincia",
-    "objeto", "cierra",
+    "objeto", "cierra", "publicado", "preguntas_hasta",
 ]
 
 COLUMNAS_HECHO = [
