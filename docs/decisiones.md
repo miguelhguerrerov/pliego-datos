@@ -1183,3 +1183,57 @@ Es el mismo patrón que D-034: un campo llamado `cierra` tiene que aguantar la p
 «¿me da tiempo?», y una pantalla llamada radar tiene que aguantar «¿puedo presentarme a
 esto?». Preguntarle al dato para qué se usa no es una fase del trabajo — es la única
 prueba que encuentra esta clase de fallo.
+
+## D-037 — `proceso_resumen` perdía el 14% de los procesos, en silencio
+
+**16 de agosto de 2026.** Lo destapó el cliente preguntando por qué TELCONET, con 724
+procesos, mostraba **3**.
+
+`a_proceso_resumen` guardaba `anio` y `mes` tomándolos de `date`. Pero `date` en el OCDS
+compilado es la **última actualización** del proceso, no su publicación.
+
+Medido sobre el archivo de 2025-04:
+
+| | |
+|---|---|
+| Filas en el archivo | 28 098 |
+| Con fecha del propio abril | 24 038 |
+| **Con fecha de otro mes** | **4 060 (14%)** |
+| En `proceso_resumen` tras la carga | **24 038** |
+
+`reemplazar` borra y copia **por partición** — `delete where anio=? and mes=?`. Una fila
+del archivo de abril con fecha de mayo se insertaba bajo mayo, y al procesar el archivo
+de mayo se borraba, porque allí no estaba. **Se caían sin un solo error.**
+
+Y no se caían al azar: se caían **las que más se habían actualizado**, o sea las
+adjudicadas y contratadas — justo las que importan para la ficha de un proveedor.
+
+### Por qué las cifras no lo delataron
+
+`hecho_mes` nunca lo sufrió, porque `a_hecho_mes` agrupa por el mes del **archivo**, que
+recibe como parámetro. Las dos tablas discrepaban desde el principio:
+
+| | `proceso_resumen` | `hecho_mes` |
+|---|---|---|
+| Procesos 2025 | 156 918 | **188 198** |
+| Proveedores distintos | 5 699 | **17 503** |
+
+Y como los agregados, los tramos y la portada salen de `hecho_mes`, **todas las cifras
+del producto eran correctas**. Lo único mal era la lista de contratos de cada proveedor,
+que es lo que se mira al entrar en una ficha.
+
+### Decisión
+
+`anio` y `mes` son los del archivo — la partición con la que la fuente reparte los datos
+y con la que se borra y copia. `fecha` sigue siendo la fecha real de la fila, que es lo
+que se muestra y lo que ordena el radar.
+
+### Lo que enseña
+
+Había una prueba de cardinalidad para las transformaciones (regla 2 del método) y no
+saltó, porque entrada y salida del mes cuadraban: 28 098 entraban y 28 098 se escribían.
+La pérdida ocurría **en la siguiente carga, de otro mes**.
+
+La regla que faltaba: **dos tablas que derivan del mismo dato tienen que cuadrar entre
+sí, y compararlas es barato**. `select count(*)` contra `sum(n_procesos)` habría gritado
+desde el primer día — y hay ahora una prueba que lo hace.

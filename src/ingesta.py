@@ -116,8 +116,20 @@ def a_proceso_resumen(mes: MesNormalizado) -> list[tuple]:
         filas.append((
             ocid,
             fecha,
-            fecha.year,
-            fecha.month,
+            # `anio` y `mes` son los del ARCHIVO, no los de la fila. Es la particion con
+            # la que la fuente reparte los datos y con la que `reemplazar` borra y copia.
+            #
+            # Tomarlos de `fecha` perdia el 14% de los procesos en silencio. El archivo
+            # de 2025-04 trae 28.098 filas y 4.060 llevan fecha de otro mes —`date` es la
+            # ULTIMA actualizacion del proceso, no su publicacion—. Esas filas se
+            # guardaban bajo su mes futuro y desaparecian al procesar ese mes, porque no
+            # estaban en su archivo. TELCONET, con 724 procesos, mostraba 3.
+            #
+            # `hecho_mes` nunca lo sufrio porque agrupa por el mes del archivo, y por eso
+            # las dos tablas discrepaban: 188.198 procesos contra 156.918.
+            # Ver docs/decisiones.md D-037.
+            mes.anio,
+            mes.mes,
             estado_de_tag(r.get("tag")),
             metodo_base(t.get("procurementMethodDetails")),
             None,                                   # cpc: solo desde la ruta JSON
