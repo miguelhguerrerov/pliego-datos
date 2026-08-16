@@ -137,10 +137,34 @@ def test_los_meses_del_radar_estan_clasificados(con):
         "select count(*) from proceso_resumen where objeto is not null "
         "and categoria_id is not null and fecha >= current_date - interval '60 days'",
     )
-    assert clasificados / total > 0.7, (
+    # El techo alcanzable **bajó a propósito** al pasar la taxonomía al CPC (D-030), y
+    # eso no es una regresión: un proceso en planificación no puede recibir CPC nunca,
+    # porque el JSON troceado por método no contiene ni un release en esa fase. Se le
+    # busca la categoría más cercana por texto, y solo el 28% supera el umbral.
+    #
+    # Bajar el umbral para llenar esta cifra sería exactamente lo contrario de lo que
+    # quiere esta prueba. Medido en seco, por debajo de 0,55 los emparejamientos son:
+    # «alprostadil» → «Equipos Informáticos», «baterías sanitarias» → «Productos
+    # Veterinarios». Un dato falso que parece bueno es peor que un hueco visible.
+    assert clasificados / total > 0.5, (
         f"solo {clasificados} de {total} procesos de los últimos 60 días tienen "
         f"categoría. El paso `clasifica.py --pendientes` debe correr tras la ingesta "
         f"diaria (D-022)."
+    )
+
+
+def test_todo_proceso_con_cpc_tiene_categoria(con):
+    """La invariante de verdad, y la que sí debe ser del 100%: si un proceso trae CPC,
+    su categoría es una consecuencia aritmética del código —los cinco primeros dígitos—
+    y no puede faltar. Aquí no hay umbral ni modelo que valgan.
+
+    Es lo que separa una regresión real (la ingesta descategorizó el radar) de una
+    limitación conocida (los procesos en planificación no tienen CPC)."""
+    huecos = _uno(con, "select count(*) from proceso_resumen "
+                       "where cpc is not null and categoria_id is null")
+    assert huecos == 0, (
+        f"{huecos:,} procesos tienen CPC y no tienen categoría. La asignación por CPC "
+        f"no es opcional ni aproximada: ejecuta `taxonomia.py`."
     )
 
 

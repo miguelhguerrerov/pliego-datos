@@ -914,3 +914,47 @@ no sobre el total.
 **Lo que sigue sin estar, y es de la fuente:** solo el 44,5% de los procesos en
 planificación declara `budget_amount`. Esa mitad no tiene monto porque la entidad aún no
 lo ha presupuestado, y ahí no hay nada que arreglar — se muestra sin cifra y se dice.
+
+## D-032 — El umbral de cercanía se queda en 0,55 y el hueco se declara
+
+**16 de agosto de 2026.**
+
+Los procesos en planificación no pueden recibir CPC —el JSON troceado por método no
+contiene ni un release en esa fase (D-030)—, así que se les busca la categoría más
+cercana por embedding del objeto contractual. La primera versión usó un umbral de 0,55
+elegido a ojo y dejó fuera al 86%.
+
+**Lo primero que hice fue mejorar la comparación, no bajar el umbral.** Comparar el
+rótulo de la categoría —«Medicamentos», dos palabras— contra un objeto contractual entero
+no funciona: se pasó a comparar contra la descripción oficial del CPC, que está escrita en
+el mismo registro. Los asignados subieron de 8 874 a 12 561.
+
+**Lo segundo fue mirar los emparejamientos, no el porcentaje.** La distribución dice
+cuántos entran; solo los ejemplos dicen si son correctos:
+
+| Parecido | Ejemplo |
+|---|---|
+| 0,40 | `alprostadil` → **Equipos Informáticos** |
+| 0,39 | `construcción de baterías sanitarias` → **Productos Veterinarios** |
+| 0,51 | `alquiler de maquinaria para relleno sanitario` → **Servicios Agroquímicos** |
+| 0,48 | `estudios y diseños para tanque reservorio de agua` → **Peces Y Servicios** |
+| 0,49 | `reactivos para uroanálisis` → **Circuitos Integrados Electrónicos** |
+
+**Decisión: el umbral se queda en 0,55.** Bajarlo llenaría la cifra de cobertura con
+basura. Un dato falso que parece bueno es peor que un hueco visible — el usuario filtra
+por una categoría, no encuentra lo suyo, y no tiene forma de saber por qué.
+
+**Por qué los que sobran son difíciles, y no es culpa del método.** Lo que queda sin
+asignar es sobre todo **obra pública y servicios**: caminos, cerramientos, adecuaciones,
+estudios. Esas contrataciones no declaran ítems con CPC, así que su subclase no está en
+el catálogo, que se construye desde los ítems. No hay a qué emparejarlas. Forzarlas a una
+categoría de bienes sería inventar.
+
+**Consecuencia en las pruebas.** El umbral de `test_los_meses_del_radar_estan_clasificados`
+baja de 0,7 a 0,5, y se añade la invariante que sí debe ser del 100%:
+`test_todo_proceso_con_cpc_tiene_categoria`. Esa distingue una regresión real —la ingesta
+descategorizó el radar— de una limitación conocida y declarada.
+
+Bajar el umbral de una prueba para ponerla en verde suele ser hacer trampa. Aquí no lo es
+porque **el techo alcanzable cambió a propósito** y hay una comprobación nueva, más
+estricta, que cubre lo que la vieja pretendía cubrir.
