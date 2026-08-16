@@ -152,6 +152,10 @@ def _extraer(release: dict, destino: DetalleMes) -> None:
                     "descripcion": it.get("description"),
                     "cantidad": it.get("quantity"),
                     "unidad": unidad.get("name"),
+                    # OJO: `unit.value.amount` es el TOTAL de la linea, no el
+                    # precio por unidad. El nombre de la columna es heredado y
+                    # enganoso; el precio unitario es esto entre `cantidad`.
+                    # Medido: ver docs/decisiones.md D-033.
                     "precio_unitario": (unidad.get("value") or {}).get("amount"),
                     "moneda": (unidad.get("value") or {}).get("currency"),
                 })

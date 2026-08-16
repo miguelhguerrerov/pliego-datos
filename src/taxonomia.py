@@ -91,11 +91,11 @@ def cpc_dominante(items: list[dict]) -> dict[str, tuple[str, float]]:
         ocid, cpc = it.get("ocid"), it.get("cpc")
         if not ocid or not cpc:
             continue
-        cantidad = it.get("cantidad") or 0
-        precio = it.get("precio_unitario") or 0
-        # Sin monto la línea sigue contando: un ítem sin precio es igualmente una
+        # `precio_unitario` es el TOTAL de la línea (D-033), que es justo el peso que
+        # queremos aquí: cuánto dinero de este proceso va a este CPC.
+        # Sin monto la línea sigue contando: un ítem sin cifra es igualmente una
         # declaración de qué se compra. Pesa lo mínimo para no ganarle a uno con monto.
-        monto = float(cantidad) * float(precio) or 1e-6
+        monto = float(it.get("precio_unitario") or 0) or 1e-6
         origen = "award" if it.get("origen") == "award" else "tender"
         por_ocid[ocid][origen][str(cpc)] += monto
 
@@ -456,12 +456,14 @@ def referencial_de_items(items: list[dict]) -> dict[str, float]:
         if it.get("origen") != "tender":
             continue
         ocid = it.get("ocid")
-        cantidad = it.get("cantidad")
-        precio = it.get("precio_unitario")
-        if not ocid or not cantidad or not precio:
+        # `precio_unitario` trae `unit.value.amount`, que es el TOTAL de la línea. El
+        # referencial del proceso es la suma de esos totales, sin multiplicar por la
+        # cantidad: hacerlo cobraba cada unidad al precio del renglón entero. Ver D-033.
+        monto_linea = it.get("precio_unitario")
+        if not ocid or not monto_linea:
             continue
         try:
-            total[ocid] += float(cantidad) * float(precio)
+            total[ocid] += float(monto_linea)
         except (TypeError, ValueError):
             continue
     return {o: round(v, 2) for o, v in total.items() if v > 0}

@@ -124,17 +124,38 @@ def calcular(items: list[dict]) -> tuple[list[tuple], list[tuple]]:
         if not cpc or not anio:
             sin_cpc += 1
             continue
-        precio = it.get("precio_unitario")
+        # `precio_unitario` es un nombre heredado y ENGAÑOSO: el campo trae
+        # `unit.value.amount`, que es el **total de la línea**, no el precio por unidad.
+        #
+        # Medido sobre 688 procesos de un solo ítem con cantidad > 1 (2025-12, subasta
+        # inversa), comparando contra el monto adjudicado del proceso:
+        #
+        #   si `amount` es el total de la línea  -> error mediano   7,0%
+        #   si `amount` es el precio unitario    -> error mediano  15.323%
+        #
+        # Y ese 7% es la baja de la subasta inversa —referencial contra adjudicado—, lo
+        # que confirma que `amount` es el referencial de la línea entera.
+        #
+        # Tomarlo por precio unitario publicaba «LECHE LÍQUIDA a 1.260.000 USD» y un
+        # tamaño de mercado de 8,1 billones de dólares, veinte veces el PIB del país.
+        # Ver docs/decisiones.md D-033.
+        monto_linea = it.get("precio_unitario")
         unidad = (it.get("unidad") or "").strip()
         cantidad = it.get("cantidad") or 0
 
-        if precio and precio > 0 and unidad:
-            precios[(cpc, anio, unidad)].append(float(precio))
+        precio = None
+        if monto_linea and monto_linea > 0 and cantidad and float(cantidad) > 0:
+            precio = float(monto_linea) / float(cantidad)
+
+        if precio and unidad:
+            precios[(cpc, anio, unidad)].append(precio)
         elif precio:
             sin_unidad += 1
 
         m = mercado[(cpc, anio)]
-        m["monto"] += float(precio or 0) * float(cantidad or 0)
+        # El monto de mercado es la SUMA de los totales de línea. Multiplicar por la
+        # cantidad contaba cada unidad como si costara el total del renglón.
+        m["monto"] += float(monto_linea or 0)
         m["procesos"].add(it.get("ocid"))
 
     # Regla 2.2 del metodo: cardinalidad de entrada y salida. Si casi todo se descarta,

@@ -958,3 +958,63 @@ descategorizó el radar— de una limitación conocida y declarada.
 Bajar el umbral de una prueba para ponerla en verde suele ser hacer trampa. Aquí no lo es
 porque **el techo alcanzable cambió a propósito** y hay una comprobación nueva, más
 estricta, que cubre lo que la vieja pretendía cubrir.
+
+## D-033 — `unit.value.amount` es el total de la línea, no el precio unitario
+
+**16 de agosto de 2026.** Corrige el benchmark, que es la función que se cobra.
+
+`detalle.py` guardaba `tender.items[].unit.value.amount` en una columna llamada
+`precio_unitario`, y `precios.py` publicaba ese valor como distribución de precio y
+`cantidad × ese valor` como tamaño de mercado.
+
+**Las dos cosas estaban mal.** El campo trae el **total de la línea**.
+
+### Cómo se vio
+
+No por el benchmark —que parecía razonable— sino por una cifra absurda a su lado:
+`mercado_cpc_prov` daba **8 167 678 542 326 USD** para un CPC en un año. La contratación
+pública entera del Ecuador ronda los 7 000 millones anuales.
+
+Al mirar los ítems, el patrón saltó solo:
+
+```
+LECHE LIQUIDA ULTRAPASTEURIZADA   q = 1 260 000   amount = 1 260 000
+Loratadina 10 mg, caja x blíster  q =   600 000   amount =    45 600
+```
+
+600 000 pastillas por 45 600 USD son **0,076 la pastilla**, que es un precio real. Como
+«precio unitario» serían 45 600 USD por pastilla.
+
+### La medición que lo cierra
+
+688 procesos de un solo ítem con cantidad > 1 (2025-12, subasta inversa), comparando
+contra el monto adjudicado del proceso:
+
+| Hipótesis | Error mediano |
+|---|---|
+| `amount` es el **total de la línea** | **7,0%** |
+| `amount` es el precio unitario | 15 323% |
+
+Y ese 7,0% no es ruido: **es la baja de la subasta inversa**, referencial contra
+adjudicado. El residuo confirma la hipótesis en vez de solo no contradecirla.
+
+### Decisión
+
+- El precio unitario es `amount / cantidad`.
+- El tamaño de mercado es la **suma de `amount`**, sin multiplicar por la cantidad.
+- La columna sigue llamándose `precio_unitario` en el Parquet porque renombrarla obliga
+  a republicar 140 meses; se anota en `detalle.py`, en `precios.py` y aquí. **Un nombre
+  heredado y engañoso es deuda: quien lo lea sin este aviso repetirá el error.**
+
+### Por qué el ensayo en seco no lo atrapó
+
+Lo ejecuté y lo di por bueno. Miré el número de filas —10 424, razonable— y las medianas
+—117,17 USD, razonable—, y no miré la magnitud de `mercado_cpc_prov`.
+
+**La mediana no delataba nada porque la cantidad mediana es 1.** Para un ítem de una
+unidad, total y precio unitario son el mismo número. El error solo aparece en las compras
+grandes, que son justo las que le importan al cliente.
+
+Regla que faltaba y ahora es prueba: **una cifra agregada se comprueba contra una
+magnitud conocida del mundo**, no solo contra su propia forma. Un mercado por encima del
+PIB del país es imposible por construcción, y eso se puede afirmar en un `assert`.

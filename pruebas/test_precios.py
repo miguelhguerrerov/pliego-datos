@@ -79,3 +79,59 @@ def test_falla_si_casi_nada_es_utilizable():
     basura = [{"cpc": None, "anio": None} for _ in range(100)]
     with pytest.raises(SystemExit, match="utilizables"):
         precios.calcular(basura + [item()])
+
+
+# --- D-033: `unit.value.amount` es el total de la línea, no el precio unitario ----
+
+def test_el_precio_unitario_se_divide_entre_la_cantidad():
+    """El campo trae el TOTAL de la línea. Medido sobre 688 procesos de un solo ítem con
+    cantidad > 1, comparando contra el adjudicado: como total de línea el error mediano
+    es del 7,0% —que es la baja de la subasta inversa—; como precio unitario, del
+    15.323%.
+
+    Tomarlo por precio unitario publicaba «LECHE LÍQUIDA a 1.260.000 USD la unidad»."""
+    from precios import calcular
+
+    items = [
+        {"cpc": "35260", "anio": 2025, "unidad": "Unidad",
+         "cantidad": 600_000, "precio_unitario": 45_600, "ocid": f"o{i}"}
+        for i in range(6)
+    ]
+    filas_precio, _ = calcular(items)
+    assert filas_precio, "debería publicarse una distribución con n=6"
+    mediana = filas_precio[0][6]
+    assert abs(mediana - 0.076) < 0.001, (
+        f"la mediana es {mediana}: 600.000 unidades por 45.600 USD son 0,076 la unidad, "
+        f"no 45.600"
+    )
+
+
+def test_el_tamano_de_mercado_no_multiplica_por_la_cantidad():
+    """Sumar cantidad × total daba 8,1 billones de dólares para un solo CPC en un año:
+    veinte veces el PIB del Ecuador, en una cifra que el producto publica."""
+    from precios import calcular
+
+    items = [
+        {"cpc": "35260", "anio": 2025, "unidad": "Unidad",
+         "cantidad": 600_000, "precio_unitario": 45_600, "ocid": "a"},
+        {"cpc": "35260", "anio": 2025, "unidad": "Unidad",
+         "cantidad": 1_000, "precio_unitario": 5_000, "ocid": "b"},
+    ]
+    _, filas_mercado = calcular(items)
+    monto = filas_mercado[0][3]
+    assert monto == 50_600, f"el mercado son 45.600 + 5.000 = 50.600, no {monto:,}"
+
+
+def test_una_cifra_de_mercado_absurda_no_pasa_desapercibida():
+    """La prueba que faltaba: comprobé el número de filas y no su magnitud. Un total de
+    mercado por encima del PIB del país es imposible por construcción."""
+    from precios import calcular
+
+    items = [{"cpc": "35260", "anio": 2025, "unidad": "Unidad",
+              "cantidad": 1, "precio_unitario": 1_000, "ocid": f"o{i}"} for i in range(10)]
+    _, filas_mercado = calcular(items)
+    for fila in filas_mercado:
+        assert fila[3] < 2e11, (
+            f"el mercado de un CPC en un año da {fila[3]:,.0f} USD. La contratación "
+            f"pública entera del Ecuador ronda los 7.000 millones al año."
+        )
