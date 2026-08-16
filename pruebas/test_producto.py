@@ -468,3 +468,39 @@ def test_el_alta_de_suscriptor_no_regala_plan(con):
     assert mal == 0 or mal < total, (
         "todos los suscriptores tienen plan de pago: revisa que el alta sea 'gratuito'"
     )
+
+
+def test_la_funcion_de_huerfanos_no_toca_tablas_revocadas(con):
+    """La otra mitad de la comprobación, y la que faltaba.
+
+    `compradores_huerfanos` es `security invoker` para que RLS siga mandando. Eso
+    significa que solo puede leer lo que el rol `authenticated` puede leer — y `entidad`
+    está **revocada** desde la 0007. Unirla contra `entidad` devolvía
+
+        42501: permission denied for table entidad
+
+    que con la clave anónima parecía el muro funcionando y no lo era: le habría pasado
+    igual a un suscriptor de pago. La función que se cobra, rota para quien la paga, con
+    un error que se leía como seguridad.
+
+    **Una comprobación que da el resultado correcto por el motivo equivocado.** Por eso
+    esto se verifica sobre el texto de la función y no sobre su salida: la salida es
+    vacía en los dos casos."""
+    cuerpo = _uno(con, """
+        select pg_get_functiondef(oid) from pg_proc
+        where proname = 'compradores_huerfanos' limit 1
+    """)
+    if not cuerpo:
+        pytest.skip("sin la migración 0019")
+
+    revocadas = ["entidad", "entidad_nombre", "hecho_mes"]
+    for tabla in revocadas:
+        import re
+        assert not re.search(rf"\bjoin\s+{tabla}\b", cuerpo, re.I), (
+            f"la función une contra `{tabla}`, que está revocada para `authenticated`. "
+            f"Devolverá «permission denied» a quien paga. Usa la vista pública."
+        )
+    assert "entidad_publica" in cuerpo, (
+        "la función debe leer entidades por `entidad_publica`, que enmascara el RUC de "
+        "persona natural (invariante 9)"
+    )
