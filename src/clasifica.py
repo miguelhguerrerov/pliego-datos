@@ -228,6 +228,7 @@ def main() -> int:
     p.add_argument("--reusar", help="aplica una taxonomia ya construida (JSON + asignacion)")
     p.add_argument("--fusionar", action="store_true", help="fusiona categorias duplicadas")
     p.add_argument("--pendientes", action="store_true", help="clasifica lo recargado por la ingesta")
+    p.add_argument("--seco", action="store_true", help="muestra sin escribir")
     p.add_argument("--por-texto", action="store_true",
                    help="asigna categoria CPC por cercania a los que no pueden tenerla")
     args = p.parse_args()
@@ -236,7 +237,7 @@ def main() -> int:
         from carga import conexion
 
         with conexion() as con:
-            n, textos = asignar_por_texto(con)
+            n, textos = asignar_por_texto(con, seco=args.seco)
         print(f"asignados por cercania: {n:,} procesos sobre {textos:,} textos unicos")
         return 0
 
@@ -434,7 +435,8 @@ def asignar_pendientes(con) -> tuple[int, int]:
 UMBRAL_CERCANIA = 0.55   # por debajo, mejor sin categoria que con una inventada
 
 
-def asignar_por_texto(con, umbral: float = UMBRAL_CERCANIA) -> tuple[int, int]:
+def asignar_por_texto(con, umbral: float = UMBRAL_CERCANIA,
+                      seco: bool = False) -> tuple[int, int]:
     """Asigna categoria a los procesos que NUNCA podran recibirla del CPC.
 
     **Por que existe, medido.** La taxonomia sale del CPC de los items, y los items solo
@@ -499,6 +501,23 @@ def asignar_por_texto(con, umbral: float = UMBRAL_CERCANIA) -> tuple[int, int]:
     for c in cortes:
         print(f"    >= {c}: {int((parecido >= c).sum()):,} textos "
               f"({(parecido >= c).mean():.0%})")
+
+    if seco:
+        # Muestras por banda. La distribucion dice CUANTOS entran; solo mirar los
+        # emparejamientos dice si son correctos, que es la pregunta. Elegir el umbral
+        # por el porcentaje seria repetir el error de elegirlo por intuicion.
+        import random
+
+        rnd = random.Random(7)
+        for bajo, alto in ((0.35, 0.45), (0.45, 0.55), (0.55, 0.65), (0.65, 1.01)):
+            indices = [i for i in range(len(unicos))
+                       if bajo <= parecido[i] < alto]
+            print(f"
+  --- parecido {bajo}-{alto}: {len(indices):,} textos ---")
+            for i in rnd.sample(indices, min(6, len(indices))):
+                print(f"    [{parecido[i]:.2f}] {unicos[i][:78]}")
+                print(f"           -> {cats[int(mejor[i])][1]}")
+        return 0, len(unicos)
 
     asignaciones = []
     flojos = 0

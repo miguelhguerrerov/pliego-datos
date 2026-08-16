@@ -15,6 +15,11 @@ on:
         required: false
         default: false
         type: boolean
+      seco:
+        description: "Mostrar los emparejamientos sin escribir nada"
+        required: false
+        default: false
+        type: boolean
       solo_cercania:
         description: "Solo asignar por cercania, sin reconstruir la taxonomia"
         required: false
@@ -51,7 +56,7 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           DEEPINFRA_API_KEY: ${{ secrets.DEEPINFRA_API_KEY }}
-        run: python src/clasifica.py --por-texto
+        run: python src/clasifica.py --por-texto ${{ inputs.seco && '--seco' || '' }}
 
       - name: Consultas de producto
         # Una taxonomia que se construye sin error puede dejar el 90% de los procesos sin
