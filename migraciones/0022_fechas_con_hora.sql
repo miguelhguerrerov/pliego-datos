@@ -24,10 +24,14 @@
 
 begin;
 
--- La vista se borra ANTES de cambiar el tipo: Postgres se niega con
+-- Las vistas se borran ANTES de cambiar el tipo: Postgres se niega con
 --   «cannot alter type of a column used by a view or rule»
--- y no hay forma de forzarlo. Se recrea abajo, ya con la comparacion corregida.
-drop view if exists v_radar_resumen;
+-- y no hay forma de forzarlo.
+--
+-- `cascade` porque `v_portada` lee de `v_radar_resumen`, y sin el segundo intento sale
+-- «cannot drop view because other objects depend on it». Las dos se recrean abajo: una
+-- cadena de vistas hay que reconstruirla entera, no a trozos.
+drop view if exists v_radar_resumen cascade;
 
 alter table proceso_resumen
     alter column cierra type timestamptz using cierra::timestamptz,
@@ -61,6 +65,17 @@ select
 from proceso_resumen
 where estado in ('planificacion', 'abierto');
 
-grant select on v_radar_resumen to anon, authenticated;
+-- `v_portada` se recrea porque el `cascade` se la llevo. Identica a la de la 0009: la
+-- portada suma en la base y no en el cliente, que es lo que costo D-026.
+create view v_portada as
+select
+    (select coalesce(sum(registros), 0) from cobertura)                  as procesos_historicos,
+    (select count(*) from entidad where tipo in ('proveedor','ambos'))   as proveedores,
+    (select count(*) from entidad where tipo in ('comprador','ambos'))   as compradores,
+    (select count(*) from categoria)                                     as categorias,
+    (select procesos from v_radar_resumen)                               as oportunidades,
+    (select en_juego from v_radar_resumen)                               as en_juego;
+
+grant select on v_radar_resumen, v_portada to anon, authenticated;
 
 commit;
