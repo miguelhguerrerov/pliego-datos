@@ -287,10 +287,10 @@ correspondiente**, no después.
 | Historico | **140 de 140 meses.** 2.774.263 procesos frente a 2.774.265 de la API |
 | Agregados | 77.693 entidades · 264.276 entidad_ano · 168.151 relaciones · 256 baja_metodo |
 | Taxonomia | 242 categorias tras fusionar · 262.244 procesos clasificados |
-| Migraciones | 0001-0013 aplicadas. `migrar.yml` las aplica desde Actions, con `recalcular` |
+| Migraciones | 0001-0030 aplicadas. `migrar.yml` las aplica desde Actions, con `recalcular` |
 | Parquet | **Republicandose los 140 meses** con esquema declarado (D-028), 4 tandas |
 | Espacio | 379 MB de 460 presupuestados |
-| Pruebas | 56 verdes |
+| Pruebas | 107 verdes. `test_renglones.py` comprueba que los renglones sumen el monto (D-041) |
 | Aplicacion | Next.js 16.3.1 en Vercel. Portada, radar, buscador, ficha de proveedor y ficha de entidad |
 
 **Flujos programados, corriendo solos:** ingesta 09:30 UTC, agregados 09:48. Verdes.

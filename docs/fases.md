@@ -74,7 +74,9 @@ Este documento es el tablero. El *por qué* de cada decisión está en `decision
 
 | Actividad | Estado | Nota |
 |---|---|---|
-| Migraciones `0001`–`0028` | Hecho | Toda la estructura en SQL |
+| Migraciones `0001`–`0030` | Hecho | Toda la estructura en SQL |
+| Desglose de renglón por método | Hecho | `unit.value.amount` es el total en subasta inversa y el precio por unidad en el resto. La regla vive en `normaliza.desglosar_renglon()`. Ver D-041 |
+| **Recalcular `precio_cpc` y `mercado_cpc_prov`** | **Pendiente** | Estaban calculadas aplicando a todo la regla de subasta inversa |
 | RLS en las 16 tablas | Hecho | El muro vive aquí, no en el frontend |
 | Enmascaramiento de persona natural | Hecho | Vista `security definer` |
 | Flujos: ingesta, agregados, Parquet, taxonomía, benchmark, migrar, compactar | Hecho | |
