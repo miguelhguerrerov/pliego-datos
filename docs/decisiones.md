@@ -1517,7 +1517,16 @@ Los Parquet **estaban ahí**. `GET /repos/.../releases?per_page=100` devuelve
 `GET /repos/.../releases/tags/datos-2025` devuelve el mismo release con sus **60
 activos**. Los tres releases de la ventana suman 159 activos y 73 MB.
 
-No es un problema de permisos, de paginación ni de borrado: es el endpoint de listado.
+No es un problema de permisos, de paginación ni de borrado: los releases existen y se
+leen perfectamente por su otra ruta.
+
+**Lo que no se puede afirmar.** Ese mismo día GitHub tuvo una caída parcial con la API
+en «major outage». El listado devolvió `[]` en tres intentos seguidos mientras el acceso
+por etiqueta funcionaba en el mismo minuto —una asimetría que la caída no explica bien—,
+pero **no se puede separar con certeza un comportamiento permanente de un síntoma de la
+caída**. Da igual para la decisión: por etiqueta funciona en los dos escenarios y no
+depende de que el listado esté sano. Si algún día se comprueba que el listado responde,
+tampoco hay motivo para volver a él.
 
 ### El arreglo
 
