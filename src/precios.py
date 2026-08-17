@@ -37,16 +37,49 @@ CACHE = Path(".parquet-cache")
 VENTANA_MESES = 24
 
 
-def _releases() -> list[dict]:
+def _release_de(etiqueta: str) -> dict | None:
+    """Un release por su etiqueta, o None si no existe."""
     pet = urllib.request.Request(
-        f"{API}/repos/{REPO}/releases?per_page=100",
+        f"{API}/repos/{REPO}/releases/tags/{etiqueta}",
         headers={"User-Agent": "pliego-datos", "Accept": "application/vnd.github+json"},
     )
     tok = os.environ.get("GITHUB_TOKEN")
     if tok:
         pet.add_header("Authorization", f"Bearer {tok}")
-    with urllib.request.urlopen(pet, timeout=120) as r:
-        return json.loads(r.read().decode())
+    try:
+        with urllib.request.urlopen(pet, timeout=120) as r:
+            return json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        raise
+
+
+def _releases(ventana: set[tuple[int, int]]) -> list[dict]:
+    """Los releases de los años de la ventana, **pedidos uno a uno por etiqueta**.
+
+    No se usa `GET /releases`: ese endpoint devuelve una lista VACÍA en este repositorio
+    aunque los releases existan, estén publicados y tengan sus activos. Comprobado el
+    17 de agosto de 2026, con token y sin token, HTTP 200 y cuerpo `[]` — mientras
+    `GET /releases/tags/datos-2025` devolvía los 60 activos del mismo release.
+
+    El fallo era silencioso de la peor manera: «meses de la ventana con Parquet: 0 de 24»
+    y un AVISO que decía que el benchmark se calcularía «sobre lo disponible». Sin
+    ítems corta, pero con un listado a medias habría publicado un benchmark incompleto
+    sin que nada lo advirtiera.
+
+    Las etiquetas son deterministas —`datos-AAAA`, las que escribe `publicar.py`—, así
+    que no hace falta listar nada. `publicar.py` ya consultaba por etiqueta; esto solo
+    lo alinea.
+    """
+    salida = []
+    for anio in sorted({a for a, _ in ventana}):
+        rel = _release_de(f"datos-{anio}")
+        if rel is not None:
+            salida.append(rel)
+        else:
+            print(f"    sin release datos-{anio}")
+    return salida
 
 
 def meses_de_la_ventana() -> set[tuple[int, int]]:
@@ -90,7 +123,7 @@ def descargar_items(ventana: set[tuple[int, int]]) -> tuple[list[dict], dict[str
     filas: list[dict] = []
     metodos: dict[str, str] = {}
     meses_items, meses_procesos = set(), set()
-    for rel in _releases():
+    for rel in _releases(ventana):
         for activo in rel.get("assets", []):
             nombre = activo["name"]
             if not nombre.endswith(".parquet"):
@@ -121,9 +154,21 @@ def descargar_items(ventana: set[tuple[int, int]]) -> tuple[list[dict], dict[str
             print(f"    {nombre}: {tabla.num_rows:,} ítems")
 
     print(f"  meses de la ventana con Parquet: {len(meses_items)} de {len(ventana)}")
+    # Antes esto era un AVISO que decía «se calcula sobre lo disponible». Con 0 de 24
+    # meses eso significaba publicar un benchmark vacío o a medias sin que nada lo
+    # impidiera; el fallo del listado de releases se descubrió porque la ejecución murió
+    # después, por otro motivo. Una advertencia que no detiene nada no protege nada.
+    if len(meses_items) < len(ventana) * 0.75:
+        raise SystemExit(
+            f"Solo {len(meses_items)} de {len(ventana)} meses de la ventana tienen "
+            f"Parquet de ítems. Un benchmark sobre menos de tres cuartos de la ventana "
+            f"no es comparable con el anterior y nadie lo notaría al mirarlo. Publica los "
+            f"meses que faltan con publicar.py, o revisa que los releases `datos-AAAA` "
+            f"existan y tengan sus activos."
+        )
     if len(meses_items) < len(ventana):
-        print(f"  AVISO: faltan {len(ventana) - len(meses_items)} meses. El benchmark se "
-              f"calcula sobre lo disponible y el n lo refleja.")
+        print(f"  faltan {len(ventana) - len(meses_items)} meses de {len(ventana)}: el "
+              f"benchmark se calcula sobre el resto y el n lo refleja.")
 
     # Un mes con ítems y sin procesos deja esos ítems sin método, y sin método la regla
     # del renglón no se puede aplicar. Que se sepa aquí y no se descubra en el benchmark.
