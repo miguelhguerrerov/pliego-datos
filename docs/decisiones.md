@@ -1594,3 +1594,28 @@ adjudicó y es lo que el cliente necesita. Donde los ítems de award vienen sin 
 el referencial.
 
 Nunca los dos: cada renglón entra una vez.
+
+### Comprobación después de recalcular
+
+| Momento | Mercado 2024 | Contra los 6 896 M adjudicados |
+|---|---|---|
+| Con la lectura de D-033 aplicada a todo | 6 245 M | 91% — *parecía bien* |
+| Con D-041 corregido, sumando los dos orígenes | 8 329 M | **121% — imposible** |
+| Con D-041 y D-043 | **5 425 M** | **79%** |
+
+El 79% es el número que se espera: **el catálogo electrónico pesa el 25,4% del monto
+adjudicado y no publica ítems**, así que un benchmark construido sobre ítems tiene que
+quedarse en torno al 75%. Los cuatro puntos de más son subasta inversa aportando su
+referencial en lugar del adjudicado, que es un 7% más alto.
+
+Tres cifras que se explican entre sí. La primera, la que parecía bien, era la única que
+no se podía justificar.
+
+### Lo que sigue sin resolver
+
+Quedan medianas como **4 187 675 USD por «Unidad»** en CPC 891210111 —servicios de
+construcción— con `n = 5`. No es un error de lectura: es una obra entera declarada como
+«1 unidad». El precio es correcto y el benchmark es inútil, porque comparar el precio de
+«una obra» contra el de «otra obra» no dice nada.
+
+Es un problema de **qué se publica**, no de cómo se calcula, y se trata aparte.
