@@ -1619,3 +1619,84 @@ construcción— con `n = 5`. No es un error de lectura: es una obra entera decl
 «una obra» contra el de «otra obra» no dice nada.
 
 Es un problema de **qué se publica**, no de cómo se calcula, y se trata aparte.
+
+---
+
+## D-044 — Las listas se paginan, se ordenan y se buscan; y dicen cuántas hay
+
+**17 de agosto de 2026.** Salió de una revisión del cliente sobre la pantalla de
+mercados: *«las tablas se truncan, no se pueden buscar, filtrar ni ordenar, y no se
+muestran todos los registros.»*
+
+### Lo que había
+
+Cada pantalla pedía un número fijo de filas y las pintaba **sin decir de cuántas**:
+
+| Pantalla | Se mostraban | Había | Visible |
+|---|---|---|---|
+| `/mercado` | 120 | **1 065** | 82,2% del monto |
+| `/radar` | 60 | **4 393** | 1,4% |
+| `/buscar` · entidades | 25 | 1 056 (para «construccion») | — |
+| `/buscar` · procesos | 25 | **3 873** | — |
+| `/mercado/[cpc]` · compradores | 15 | **562** en vigilancia | — |
+| `/mercado/[cpc]` · proveedores | 15 | 190 | — |
+| `/entidad/[ruc]` · recientes | 12 | 29 en Quito | — |
+
+**Ninguna emitía `count: "exact"`**, así que ni la aplicación sabía el total. Una lista
+truncada sin total **se lee como completa**: es la misma clase de fallo que D-041 y
+D-043 —nada falla, y el dato es falso—. Por eso el componente `Tabla` **exige** `total`
+y no lo acepta opcional: una tabla que no sabe cuántas filas hay no debería pintarse.
+
+### Lo que se hizo
+
+`lib/lista.ts` lee y **valida** los parámetros, `componentes/Tabla.tsx` pinta cabeceras
+que ordenan y su paginación, `FiltroLista.tsx` busca dentro. Se aplicó a las siete
+pantallas con tabla.
+
+**En el servidor y no en el navegador**, por tres razones y ninguna de gusto:
+
+1. PostgREST corta en **1.000 filas**. El radar tiene 4.393: no caben, así que ordenar
+   en el cliente exigiría traérselas todas y no se puede.
+2. Las páginas se indexan. Un orden que vive en `useState` no tiene URL y no se puede
+   enlazar ni compartir.
+3. El muro de pago vive en las políticas RLS. Filtrar en el cliente obliga a mandar los
+   datos primero, y eso regalaría justo lo que se cobra.
+
+**La columna de orden nunca sale del usuario.** Va contra una lista blanca por tabla:
+`orden` acaba dentro de `.order()` y de ahí a PostgREST tal cual. Comprobado que
+`?orden=hackeame&dir=xx&p=-5` cae en los valores por omisión sin error.
+
+**Páginas con varias listas**, con prefijo por lista: `/buscar` usa `ep`/`eorden`/`edir`
+para entidades y `pp`/`porden`/`pdir` para procesos, con la `q` compartida. Verificado
+que paginar una no mueve la otra.
+
+### Lo que se encontró de paso
+
+- **`/radar` pedía la tabla `categoria` entera** con un `select` sin límite. Tiene 1.579
+  filas y PostgREST devuelve 1.000: **579 categorías no llegaban nunca**, y las filas que
+  caían en ellas se pintaban sin categoría. La trampa documentada, ocurriendo de verdad.
+  Ahora se piden solo los ids de la página, que son 50 como mucho.
+- **La cifra de concentración de `/mercado/[cpc]`** —«el primero se lleva el 15,3%»— se
+  calcula sobre las filas que se pintan. Con la tabla ordenada por nombre, «el primero»
+  pasaría a ser el primero del alfabeto y el porcentaje no significaría nada. Ahora solo
+  aparece en el orden por monto y en la primera página; en cualquier otro caso se calla.
+  **Una cifra que cambia de significado según cómo esté ordenada la tabla no se enseña.**
+- Los guardas de sección iban sobre las filas de la página y no sobre el total. En la
+  última página + 1, la sección desaparecía **con su paginación dentro** y no había forma
+  de volver.
+
+### Lo que NO se hizo, y por qué
+
+El cliente pidió **primera página cacheada y el resto dinámico**. En Next 16 eso ya no se
+puede activar por ruta: `experimental.ppr` da error y remite a `cacheComponents`, que
+**invierte el modelo de caché de toda la aplicación** —todo dinámico salvo lo marcado con
+`use cache`—. Hasta terminar esa migración, portada, fichas y benchmark consultarían
+Supabase en cada visita: lo contrario de lo que se busca con el egress de 5 GB.
+
+Se hizo lo que cumple el objetivo real: **la caché es de datos, no de HTML**. El HTML se
+renderiza por petición —barato— y `unstable_cache` guarda la consulta por combinación de
+orden, filtro y página. La primera página por monto, que es la que ve casi todo el mundo
+y la que se indexa, se sirve sin tocar Supabase. Un `Suspense` mantiene la cabecera
+visible mientras llega la tabla.
+
+Migrar a `cacheComponents` queda pendiente y es la vía para tener además el HTML estático.

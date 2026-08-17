@@ -76,6 +76,8 @@ Este documento es el tablero. El *por qué* de cada decisión está en `decision
 |---|---|---|
 | Migraciones `0001`–`0030` | Hecho | Toda la estructura en SQL |
 | Desglose de renglón por método | Hecho | `unit.value.amount` es el total en subasta inversa y el precio por unidad en el resto. La regla vive en `normaliza.desglosar_renglon()`. Ver D-041 |
+| Paginacion, orden y busqueda en las listas | Hecho | Las siete pantallas con tabla: total real, cabeceras que ordenan, filtro y paginas. Ver D-044 |
+| Migrar a `cacheComponents` para HTML estatico | Pendiente | Hoy la cache es de datos. Es la via para que la primera pagina vuelva a ser estatica |
 | Recalcular `precio_cpc` y `mercado_cpc_prov` | Hecho | 8.106 y 19.086 filas. Mercado 2024: 5.425 M, el 79% del adjudicado —el catalogo pesa el 25,4% y no publica items. Ver D-041 y D-043 |
 | Utilidad del benchmark en servicios de construccion | Pendiente | Obras declaradas como «1 unidad» dan medianas de 4,1 M por unidad: correctas e inutiles. Es que se publica, no como se calcula |
 | RLS en las 16 tablas | Hecho | El muro vive aquí, no en el frontend |

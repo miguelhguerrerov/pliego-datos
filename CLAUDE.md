@@ -64,6 +64,9 @@ Cosas que parecen buena idea al empezar una sesión en frío y no lo son.
 | «El precio unitario es el total del renglón entre la cantidad» | Solo en **subasta inversa**. En licitación y el resto, `unit.value.amount` YA es el precio por unidad y dividir lo destroza: acero de construcción a 0,0005 USD el kilo. El mismo campo, dos magnitudes. Ver D-041. |
 | «Listo los releases con `GET /releases` y busco el activo» | Ese endpoint devuelve **`[]`** en `pliego-datos` aunque los releases existan y tengan sus activos —HTTP 200, cuerpo de 2 bytes, con token y sin token—, mientras `GET /releases/tags/datos-2025` devuelve los 60. Pedir siempre **por etiqueta**. Ver D-042. |
 | «Sumo los ítems de `tender` y los de `awards`» | Son **el mismo renglón dos veces**, antes y después de adjudicar: 1.383 de 1.495 licitaciones los tienen en los dos sitios y el mercado se infla ×1,78. Un origen por proceso, `award` si trae importe. Ver D-043. |
+| «Pongo un `limit` y ya» | Una lista truncada **sin total se lee como completa**. `/mercado` daba 120 de 1.065 y `/radar` 60 de 4.393, sin un solo `count: exact` en toda la aplicacion. El componente `Tabla` exige `total`. Ver D-044. |
+| «Ordeno y filtro la tabla en el cliente» | PostgREST corta en 1.000 filas y el radar tiene 4.393: no caben. Ademas el orden no tendria URL —ni enlazable ni indexable— y filtrar en el navegador exige mandar antes los datos, que es lo que el muro no permite. |
+| «Activo `cacheComponents` para tener PPR» | En Next 16 invierte la cache de la aplicacion entera: todo dinamico salvo lo marcado con `use cache`. Hasta terminar esa migracion, portada y fichas consultarian Supabase en cada visita. Ver D-044. |
 
 ---
 
