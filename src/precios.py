@@ -196,6 +196,33 @@ def calcular(items: list[dict], metodos: dict[str, str]) -> tuple[list[tuple], l
         lambda: {"monto": 0.0, "procesos": set(), "cpc_n": 0}
     )
 
+    # ------------------------------------------------------------------
+    # Un solo origen por proceso: `awards` si trae importes, si no `tender`
+    # ------------------------------------------------------------------
+    # `detalle.py` guarda los ítems de tender Y los de awards, porque los de awards son
+    # los efectivamente adjudicados. Pero el cálculo los sumaba TODOS, y en licitación
+    # 1.383 de 1.495 procesos tienen ítems en los dos sitios: el mercado se inflaba
+    # ×1,78. Medido en 2025-12 sobre la fuente.
+    #
+    # Se prefiere `award` porque es el precio al que de verdad se adjudicó, que es lo que
+    # el cliente necesita saber. En subasta inversa los ítems de award vienen **sin
+    # importe** —1.833 ítems, monto total 0— así que ahí se cae a `tender` y lo que se
+    # publica es el referencial. Ver D-043.
+    con_award = set()
+    for it in items:
+        if it.get("origen") == "award":
+            try:
+                if float(it.get("precio_unitario") or 0) > 0:
+                    con_award.add(it.get("ocid"))
+            except (TypeError, ValueError):
+                pass
+
+    antes = len(items)
+    items = [it for it in items
+             if (it.get("origen") == "award") == (it.get("ocid") in con_award)]
+    print(f"  ítems tras quedarse con un solo origen por proceso: {len(items):,} "
+          f"de {antes:,} · procesos con importe adjudicado: {len(con_award):,}")
+
     sin_cpc = sin_unidad = sin_metodo = 0
     for it in items:
         cpc = it.get("cpc")

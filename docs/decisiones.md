@@ -1541,3 +1541,47 @@ el otro lado: una alarma que salta sin motivo entrena a ignorarla.
 **Cualquier acceso a un release va por etiqueta.** Listar es una dependencia sobre un
 comportamiento que ya se demostró poco fiable, y su fallo es silencioso: devuelve una
 lista vacía, no un error.
+
+---
+
+## D-043 — Los ítems de `tender` y de `awards` no se suman los dos
+
+**17 de agosto de 2026.** Salió al comprobar el benchmark ya corregido por D-041.
+
+El tamaño de mercado de 2024 daba **8 329 M USD** contra **6 896 M** reales — un 121%,
+y eso **excluyendo el catálogo electrónico entero**, que no publica ítems. Una cifra por
+encima del total del país mientras se deja fuera la mitad de los procesos no puede estar
+bien.
+
+### La causa
+
+`detalle.py` guarda los ítems de `tender` **y** los de `awards`, con una columna `origen`
+para distinguirlos. `precios.py` los sumaba todos.
+
+Medido en 2025-12 sobre la fuente:
+
+| Método | Ítems en tender | Ítems en awards | Procesos con ambos | Inflación |
+|---|---|---|---|---|
+| Licitación | 122 221 · 799 M | 112 487 · 627 M | 1 383 de 1 495 | **×1,78** |
+| Subasta inversa | 2 069 · 355 M | 1 833 · **0** | 1 832 de 2 217 | ×1,00 |
+
+El 0,78 entre award y tender en licitación es la baja del proceso, y confirma que son el
+mismo renglón dos veces: antes y después de adjudicar.
+
+### Por qué no se vio antes
+
+**Dos errores que se cancelaban a medias.** Con la lectura equivocada de D-041 —sumar
+importes crudos sin multiplicar por la cantidad— el total salía 6 245 M, un 91% del real.
+Parecía razonable. Al corregir uno, el otro quedó al descubierto.
+
+Es el argumento de la regla 1 del método en su forma más incómoda: un agregado que cuadra
+no prueba que el cálculo sea correcto, solo que los errores se compensan.
+
+### La regla
+
+**Un solo origen por proceso.** Se prefiere `award`, que es el precio al que de verdad se
+adjudicó y es lo que el cliente necesita. Donde los ítems de award vienen sin importe
+—subasta inversa, sus 1 833 ítems suman cero— se usa `tender`, y lo que se publica ahí es
+el referencial.
+
+Nunca los dos: cada renglón entra una vez.

@@ -169,3 +169,44 @@ def test_una_cifra_de_mercado_absurda_no_pasa_desapercibida():
             f"el mercado de un CPC en un año da {fila[3]:,.0f} USD. La contratación "
             f"pública entera del Ecuador ronda los 7.000 millones al año."
         )
+
+
+# --- D-043: los ítems de tender y de awards no se suman los dos -------------------
+
+def test_un_proceso_adjudicado_usa_solo_sus_items_de_award():
+    """`detalle.py` guarda los ítems de tender Y los de awards. Sumar los dos infla el
+    mercado ×1,78: en 2025-12, 1.383 de 1.495 licitaciones tienen ítems en ambos sitios.
+
+    Se prefiere award porque es el precio al que de verdad se adjudicó."""
+    items = []
+    for i in range(10):
+        base = {"cpc": "42190", "anio": 2025, "unidad": "Metro",
+                "cantidad": 10, "ocid": f"o{i}"}
+        items.append({**base, "origen": "tender", "precio_unitario": 100.0})
+        items.append({**base, "origen": "award", "precio_unitario": 80.0})
+
+    filas_precio, filas_mercado = calcular(items)
+    assert filas_precio[0][3] == 10, "diez procesos, no veinte ítems"
+    assert filas_precio[0][6] == pytest.approx(80.0), (
+        "tiene que salir el precio ADJUDICADO (80), no el referencial (100) ni una "
+        "mezcla de los dos"
+    )
+    assert filas_mercado[0][3] == pytest.approx(10 * 10 * 80.0), (
+        "el mercado son diez procesos de 10 × 80, no la suma de los dos orígenes"
+    )
+
+
+def test_sin_importe_en_award_se_usa_el_referencial():
+    """Subasta inversa publica 1.833 ítems de award **sin importe**. Si se descartara
+    tender por tener award, esos procesos desaparecerían del benchmark entero."""
+    items = []
+    for i in range(10):
+        base = {"cpc": "35260", "anio": 2025, "unidad": "Unidad",
+                "cantidad": 100, "ocid": f"o{i}"}
+        items.append({**base, "origen": "tender", "precio_unitario": 5000.0})
+        items.append({**base, "origen": "award", "precio_unitario": None})
+
+    filas_precio, _ = calcular(items, "Subasta Inversa Electrónica")
+    assert filas_precio, "no puede quedarse sin filas por un award vacío"
+    assert filas_precio[0][3] == 10
+    assert filas_precio[0][6] == pytest.approx(50.0), "5.000 el renglón entre 100 unidades"
