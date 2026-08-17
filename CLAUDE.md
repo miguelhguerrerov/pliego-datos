@@ -61,6 +61,7 @@ Cosas que parecen buena idea al empezar una sesión en frío y no lo son.
 | «Crear otra organización en Supabase para tener más cupo» | El límite de 2 proyectos activos es **por usuario**, no por organización. Comprobado con un 400 explícito. |
 | «Sacamos del portal del SERCOP los datos que faltan» | El enlace lleva un token de 32 bytes cifrados y el buscador tiene CAPTCHA. Y el producto entero depende de que nos sigan sirviendo la descarga masiva. Ver D-040. |
 | «El detalle de un proceso lo pedimos en vivo a su API» | 60 peticiones/min sin cabeceras de límite, y el castigo dura más de doce minutos. En Vercel las funciones comparten IP: un usuario rompería la pantalla para todos. Ver D-035. |
+| «El precio unitario es el total del renglón entre la cantidad» | Solo en **subasta inversa**. En licitación y el resto, `unit.value.amount` YA es el precio por unidad y dividir lo destroza: acero de construcción a 0,0005 USD el kilo. El mismo campo, dos magnitudes. Ver D-041. |
 
 ---
 

@@ -262,6 +262,31 @@ Casos de prueba en `pruebas/test_codificacion.py`:
 Llegan como texto con decimales. `amount` nulo se trata como cero **y se marca**; la fila no
 se descarta. `budget - amount` es el ahorro; solo tiene sentido cuando ambos existen.
 
+### 5.5 `unit.value.amount` — el campo que significa dos cosas
+
+**Es el único campo de la fuente cuyo significado depende del método.** Nada lo advierte
+en el esquema, y leerlo mal produce cifras absurdas sin ningún error.
+
+| Método | Qué es `tender.items[].unit.value.amount` | Ítems por proceso |
+|---|---|---|
+| **Subasta Inversa Electrónica** | el **total del renglón** | 1 (un resumen del proceso) |
+| Licitación, Menor cuantía, Cotización, Contratos entre entidades, Bienes y servicios únicos | el **precio por unidad** | 12–37 (partidas reales) |
+| Catálogo electrónico, 4 variantes | **no publica ítems** | 0 de 21 623 releases |
+
+Medido en 2025-12 y 2024-06 comparando `sum(amount)` y `sum(amount × quantity)` contra
+el referencial del proceso —o contra el adjudicado en subasta inversa, que **no publica
+referencial en ningún release**—. La fracción de procesos en que gana cada lectura es
+100% o 0%, nunca intermedia.
+
+**La regla vive en `normaliza.desglosar_renglon()` y en ningún otro sitio.** Devuelve
+`(precio_unitario, monto_linea)` y exige el método. No replicarla: la consumen
+`precios.py` y `abiertos.py`, y dos copias divergen.
+
+**La comprobación que lo detecta:** la suma de los totales de renglón de un proceso tiene
+que acercarse a su referencial. Está en `pruebas/test_renglones.py` y visible en la
+propia ficha de proceso. Ver `decisiones.md` D-041, y D-033 para el caso de subasta
+inversa que se midió primero.
+
 ---
 
 ## 6. Validaciones previas a la carga

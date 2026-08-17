@@ -961,6 +961,12 @@ estricta, que cubre lo que la vieja pretendía cubrir.
 
 ## D-033 — `unit.value.amount` es el total de la línea, no el precio unitario
 
+> **CORREGIDO PARCIALMENTE POR D-041.** Todo lo que sigue es cierto **para subasta
+> inversa**, que es el único método que se midió aquí. En licitación, menor cuantía,
+> cotización, contratos entre entidades y bienes y servicios únicos, el mismo campo es
+> el **precio por unidad** — verificado al céntimo. La conclusión correcta no es «es el
+> total» sino «depende del método». **No aplicar esta entrada sin leer D-041.**
+
 **16 de agosto de 2026.** Corrige el benchmark, que es la función que se cobra.
 
 `detalle.py` guardaba `tender.items[].unit.value.amount` en una columna llamada
@@ -1386,3 +1392,107 @@ para que no estén en el OCDS, y el estándar tiene una extensión para criterio
 La petición es concreta: *que publiquen los pesos de los parámetros de calificación, como
 ya publican los criterios*. Por LOTAIP o al equipo de datos abiertos. Beneficia a todo el
 ecosistema y no solo a nosotros, que es lo que hace que valga la pena pedirla.
+
+---
+
+## D-041 — `unit.value.amount` significa dos cosas, según el método
+
+**17 de agosto de 2026.** Lo vio el cliente mirando la tabla de artículos de una obra:
+*«creo que estás usando mal los valores de precio unitario y total. La suma de los
+valores totales no es igual a la del monto contractual.»*
+
+Tenía razón. Y corrige a **D-033**, que sigue siendo válido en su mitad.
+
+### El síntoma
+
+En `LICO-GADPO-2026-21`, la ficha daba:
+
+| Artículo | Cantidad | Total línea |
+|---|---|---|
+| Acero de refuerzo fy = 4200 kg/cm² | 5 063,22 kg | **2 USD** |
+| Excavación y relleno para estructuras | 827,5 m³ | **4 USD** |
+| Transporte de material de mejoramiento | 18 935 m³-km | **0 USD** |
+
+Los trece renglones sumaban **2 127 USD** contra un referencial declarado de
+**94 102,17**. Acero de construcción a 0,0005 USD el kilo.
+
+### La causa
+
+El campo `unit.value.amount` **no significa lo mismo en todos los métodos**:
+
+| Método | Qué es `unit.value.amount` |
+|---|---|
+| **Subasta Inversa Electrónica** | el **total del renglón** |
+| todos los demás con ítems | el **precio por unidad** |
+| Catálogo electrónico (4 variantes) | no publica ítems |
+
+Nada en la fuente lo advierte. El mismo nombre, dos magnitudes.
+
+### La medición
+
+Por proceso se comparó `sum(amount)` y `sum(amount × quantity)` contra el referencial
+—o contra el adjudicado en subasta inversa, que no publica referencial en **ninguno** de
+sus 2 217 releases—. Solo cuentan los procesos donde alguna cantidad ≠ 1: si todas son 1
+las dos lecturas son idénticas y el proceso no distingue nada.
+
+| Método | 2025-12 · n | como total | como unitario | 2024-06 · n | gana «total» |
+|---|---|---|---|---|---|
+| **Subasta inversa** | 688 | **7,0%** | 15 323% | 572 | **100%** |
+| Licitación | 1 161 | 95,1% | **0,0%** | 32 | **0%** |
+| Menor cuantía | — | — | — | 10 | **0%** |
+| Cotización | — | — | — | 2 | **0%** |
+| Contratos entre entidades | 12 | 99,9% | **0,0%** | 9 | **0%** |
+| Bienes y servicios únicos | 15 | 91,7% | **0,0%** | 13 | **0%** |
+| Catálogo × 4 | 7 188 releases sin ítems | | | 14 435 sin ítems | no aplica |
+
+**La columna que decide es la última.** No es una mediana favorable: es 100% o 0%, nunca
+intermedia. Eso es una regla, no una tendencia. Ese 7% de la subasta inversa no es error,
+es la baja del propio remate — allí el árbitro es el adjudicado.
+
+Y el proceso del cliente lo confirma al céntimo: **94 102,18 calculado contra 94 102,17
+declarado**.
+
+### Por qué se equivocaron las dos mediciones anteriores
+
+**D-033 midió subasta inversa** —688 procesos, los mismos 688— y concluyó «total de
+línea» para todo. **La revisión de esta ficha midió licitación** y concluyó «precio
+unitario» para todo. Las dos generalizaron desde el único método que habían mirado.
+
+D-033 no se borra: **acertó en su método**, y su ejemplo —«LECHE LÍQUIDA a 1 260 000 USD
+la unidad»— sigue siendo el motivo por el que en subasta inversa hay que dividir.
+
+Lo que faltaba en las dos era **la segunda muestra**. Una medición sobre un solo estrato
+de una fuente heterogénea no mide la fuente: mide el estrato.
+
+### Por qué no lo vio ninguna prueba
+
+Las 56 estaban en verde. Comprobaban **funciones** —«calcular devuelve filas», «los
+percentiles están ordenados»— y el fallo estaba en el **resultado**. Es el cuarto caso
+del mismo patrón, y el que lo hace explícito: la comprobación que faltaba era la que hizo
+el cliente a ojo, **sumar la columna y compararla con el monto**.
+
+`pruebas/test_renglones.py` la automatiza, y las pruebas del benchmark ahora van **por
+pares**: el mismo ítem con los dos métodos. Con un solo método no se distingue nada, y
+esa es exactamente la forma que tuvo el fallo las dos veces.
+
+### Lo que se cambió
+
+- **`normaliza.desglosar_renglon()`** — la regla, en un solo sitio. Devuelve
+  `(precio_unitario, monto_linea)` y necesita el método. Vive ahí porque la consumen
+  `precios.py` y `abiertos.py`: con la regla escrita dos veces, arreglar una y no la
+  otra es cuestión de tiempo.
+- **`precios.py`** — baja también `procesos_*.parquet` para cruzar el método. Un ítem sin
+  método **corta la ejecución** en lugar de caer en una rama por omisión: un valor por
+  defecto en el campo ambiguo es este mismo fallo otra vez.
+- **`abiertos.py` + migración 0030** — `proceso_item` guarda las **dos** columnas ya
+  desglosadas. La aplicación no divide ni multiplica.
+- **La ficha** — muestra la **suma de los renglones junto al referencial**. La
+  comprobación del cliente, hecha visible en la pantalla donde falló.
+
+### Alcance
+
+`precio_cpc` (10 424 filas) y `mercado_cpc_prov` (19 113) estaban calculadas aplicando a
+todo la regla de subasta inversa. El total de mercado salía **creíble** —6 245 M en 2024
+contra 6 896 M reales, un 91%— porque el volumen lo domina subasta inversa, donde la
+lectura era correcta. Eso es lo que lo mantuvo escondido: **el agregado tapaba el error
+del caso individual**. Hay que recalcular las dos tablas.

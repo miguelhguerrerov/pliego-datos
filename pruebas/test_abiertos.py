@@ -14,7 +14,10 @@ from abiertos import TABLAS, filtrar, meses_a_mirar  # noqa: E402
 
 
 def _detalle(**kw):
-    base = dict(items=[], oferentes=[], pujas=[], consultas=[], lotes=[])
+    # `procesos` hace falta porque el desglose de cada renglón depende del método:
+    # `unit.value.amount` es el total en subasta inversa y el precio por unidad en el
+    # resto. Ver D-041.
+    base = dict(items=[], oferentes=[], pujas=[], consultas=[], lotes=[], procesos=[])
     base.update(kw)
     return SimpleNamespace(**base)
 
@@ -32,6 +35,28 @@ def test_solo_entra_lo_que_sigue_abierto():
     filas = filtrar(d, {"abierto"})
     assert len(filas["proceso_item"]) == 1
     assert filas["proceso_item"][0][0] == "abierto"
+
+
+def test_el_metodo_del_proceso_llega_hasta_el_renglon():
+    """D-041: el mismo ítem tiene que salir distinto según el método de su proceso.
+
+    Si `filtrar` dejara de mirar `detalle.procesos`, los dos casos darían lo mismo y la
+    ficha volvería a publicar «acero de refuerzo, 5.063 kg, total 2 USD». Esta prueba es
+    la que lo impide, porque compara los dos métodos en la misma llamada.
+    """
+    def renglon(ocid):
+        return {"ocid": ocid, "item_id": "1", "origen": "tender", "cpc": "35260",
+                "descripcion": "x", "cantidad": 50, "unidad": "u", "precio_unitario": 1000}
+
+    d = _detalle(
+        items=[renglon("sie"), renglon("lico")],
+        procesos=[{"ocid": "sie", "metodo": "Subasta Inversa Electrónica"},
+                  {"ocid": "lico", "metodo": "Licitación"}],
+    )
+    filas = {f[0]: f for f in filtrar(d, {"sie", "lico"})["proceso_item"]}
+    # (ocid, item_id, origen, cpc, descripcion, cantidad, unidad, precio, monto_linea)
+    assert filas["sie"][7:] == (20.0, 1000.0), "en subasta inversa el campo es el total"
+    assert filas["lico"][7:] == (1000.0, 50000.0), "en licitación es el precio por unidad"
 
 
 def test_las_consultas_conservan_pregunta_y_respuesta():

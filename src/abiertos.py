@@ -34,12 +34,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from descarga import ErrorDescarga  # noqa: E402
 from detalle import descargar_detalle  # noqa: E402
+from normaliza import desglosar_renglon  # noqa: E402
 
 CACHE = Path(".cache")
 
 TABLAS = {
+    # `precio_unitario` y `monto_linea` se guardan las DOS, ya desglosadas. Antes solo
+    # estaba una y la ficha derivaba la otra dividiendo entre la cantidad, que es
+    # correcto en subasta inversa y falso en todo lo demás. Ver D-041.
     "proceso_item": ["ocid", "item_id", "origen", "cpc", "descripcion",
-                     "cantidad", "unidad", "monto_linea"],
+                     "cantidad", "unidad", "precio_unitario", "monto_linea"],
     "proceso_oferente": ["ocid", "ruc", "nombre", "gano"],
     "proceso_puja": ["ocid", "puja_id", "ruc", "fecha", "valor"],
     "proceso_consulta": ["ocid", "consulta_id", "fecha", "autor_ruc", "autor",
@@ -77,13 +81,20 @@ def filtrar(detalle, abiertos: set[str]) -> dict[str, list[tuple]]:
     """
     filas: dict[str, list[tuple]] = {t: [] for t in TABLAS}
 
+    # El método decide si `unit.value.amount` es un precio o un total, así que hay que
+    # tenerlo a mano antes de recorrer los ítems.
+    metodo_de = {p["ocid"]: p.get("metodo") for p in detalle.procesos}
+
     for it in detalle.items:
         if it["ocid"] not in abiertos:
             continue
+        precio, monto_linea = desglosar_renglon(
+            metodo_de.get(it["ocid"]), it.get("precio_unitario"), it.get("cantidad")
+        )
         filas["proceso_item"].append((
             it["ocid"], it.get("item_id"), it.get("origen"), it.get("cpc"),
             (it.get("descripcion") or "")[:400] or None,
-            it.get("cantidad"), it.get("unidad"), it.get("precio_unitario"),
+            it.get("cantidad"), it.get("unidad"), precio, monto_linea,
         ))
 
     vistos = set()

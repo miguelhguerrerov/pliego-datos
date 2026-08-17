@@ -26,6 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from agrega import MESES_SIN_CERRAR, N_MINIMO, corte_estadistico  # noqa: E402
+from normaliza import desglosar_renglon  # noqa: E402
 
 REPO = os.environ.get("GITHUB_REPOSITORY", "miguelhguerrerov/pliego-datos")
 API = "https://api.github.com"
@@ -63,31 +64,53 @@ def meses_de_la_ventana() -> set[tuple[int, int]]:
     return salida
 
 
-def descargar_items(ventana: set[tuple[int, int]]) -> list[dict]:
-    """Trae los Parquet de ítems de la ventana. Devuelve las filas."""
+def descargar_items(ventana: set[tuple[int, int]]) -> tuple[list[dict], dict[str, str]]:
+    """Trae los Parquet de la ventana. Devuelve `(items, ocid -> metodo)`.
+
+    **Se bajan los dos Parquet, no solo el de ítems.** `unit.value.amount` significa una
+    cosa en subasta inversa y otra en el resto (ver `desglosar_renglon`), y el método no
+    está en la tabla de ítems: está en la de procesos. Sin ese cruce no hay forma de
+    saber si un renglón trae un precio o un total, y el benchmark sale mal en un sentido
+    o en el otro. Bajar `procesos_*` cuesta unos pocos MB por mes.
+    """
     import pyarrow.parquet as pq
 
     CACHE.mkdir(parents=True, exist_ok=True)
+
+    def bajar(activo, nombre: str):
+        destino = CACHE / nombre
+        if not destino.exists():
+            pet = urllib.request.Request(
+                activo["browser_download_url"], headers={"User-Agent": "pliego-datos"}
+            )
+            with urllib.request.urlopen(pet, timeout=300) as r:
+                destino.write_bytes(r.read())
+        return pq.read_table(destino)
+
     filas: list[dict] = []
-    disponibles = 0
+    metodos: dict[str, str] = {}
+    meses_items, meses_procesos = set(), set()
     for rel in _releases():
         for activo in rel.get("assets", []):
             nombre = activo["name"]
-            if not nombre.startswith("items_") or not nombre.endswith(".parquet"):
+            if not nombre.endswith(".parquet"):
+                continue
+            es_item = nombre.startswith("items_")
+            es_proceso = nombre.startswith("procesos_")
+            if not (es_item or es_proceso):
                 continue
             partes = nombre[:-8].split("_")
             anio, mes = int(partes[1]), int(partes[2])
             if (anio, mes) not in ventana:
                 continue
-            disponibles += 1
-            destino = CACHE / nombre
-            if not destino.exists():
-                pet = urllib.request.Request(
-                    activo["browser_download_url"], headers={"User-Agent": "pliego-datos"}
-                )
-                with urllib.request.urlopen(pet, timeout=300) as r:
-                    destino.write_bytes(r.read())
-            tabla = pq.read_table(destino)
+            tabla = bajar(activo, nombre)
+            if es_proceso:
+                meses_procesos.add((anio, mes))
+                for f in tabla.select(["ocid", "metodo"]).to_pylist():
+                    if f.get("ocid") and f.get("metodo"):
+                        metodos[f["ocid"]] = f["metodo"]
+                continue
+            meses_items.add((anio, mes))
             # Los items del Parquet NO llevan fecha: detalle.py guarda ocid, cpc,
             # cantidad, unidad y precio. El periodo esta en el nombre del archivo, que
             # es por mes. Sin esto, calcular() devolveria cero filas en silencio.
@@ -97,14 +120,25 @@ def descargar_items(ventana: set[tuple[int, int]]) -> list[dict]:
                 filas.append(fila)
             print(f"    {nombre}: {tabla.num_rows:,} ítems")
 
-    print(f"  meses de la ventana con Parquet: {disponibles} de {len(ventana)}")
-    if disponibles < len(ventana):
-        print(f"  AVISO: faltan {len(ventana) - disponibles} meses. El benchmark se "
+    print(f"  meses de la ventana con Parquet: {len(meses_items)} de {len(ventana)}")
+    if len(meses_items) < len(ventana):
+        print(f"  AVISO: faltan {len(ventana) - len(meses_items)} meses. El benchmark se "
               f"calcula sobre lo disponible y el n lo refleja.")
-    return filas
+
+    # Un mes con ítems y sin procesos deja esos ítems sin método, y sin método la regla
+    # del renglón no se puede aplicar. Que se sepa aquí y no se descubra en el benchmark.
+    huerfanos = meses_items - meses_procesos
+    if huerfanos:
+        raise SystemExit(
+            f"Hay ítems sin su Parquet de procesos en {len(huerfanos)} meses: "
+            f"{sorted(huerfanos)[:6]}. Sin `metodo` no se puede saber si "
+            f"`unit.value.amount` es un precio unitario o el total del renglón. "
+            f"Republica esos meses con publicar.py antes de calcular el benchmark."
+        )
+    return filas, metodos
 
 
-def calcular(items: list[dict]) -> tuple[list[tuple], list[tuple]]:
+def calcular(items: list[dict], metodos: dict[str, str]) -> tuple[list[tuple], list[tuple]]:
     """Distribución de precio unitario por CPC y año, y tamaño de mercado por CPC.
 
     Solo entran ítems con **CPC, precio unitario y unidad declarados**: sin unidad, dos
@@ -117,35 +151,28 @@ def calcular(items: list[dict]) -> tuple[list[tuple], list[tuple]]:
         lambda: {"monto": 0.0, "procesos": set(), "cpc_n": 0}
     )
 
-    sin_cpc = sin_unidad = 0
+    sin_cpc = sin_unidad = sin_metodo = 0
     for it in items:
         cpc = it.get("cpc")
         anio = it.get("anio")
         if not cpc or not anio:
             sin_cpc += 1
             continue
-        # `precio_unitario` es un nombre heredado y ENGAÑOSO: el campo trae
-        # `unit.value.amount`, que es el **total de la línea**, no el precio por unidad.
-        #
-        # Medido sobre 688 procesos de un solo ítem con cantidad > 1 (2025-12, subasta
-        # inversa), comparando contra el monto adjudicado del proceso:
-        #
-        #   si `amount` es el total de la línea  -> error mediano   7,0%
-        #   si `amount` es el precio unitario    -> error mediano  15.323%
-        #
-        # Y ese 7% es la baja de la subasta inversa —referencial contra adjudicado—, lo
-        # que confirma que `amount` es el referencial de la línea entera.
-        #
-        # Tomarlo por precio unitario publicaba «LECHE LÍQUIDA a 1.260.000 USD» y un
-        # tamaño de mercado de 8,1 billones de dólares, veinte veces el PIB del país.
-        # Ver docs/decisiones.md D-033.
-        monto_linea = it.get("precio_unitario")
+        # `precio_unitario` es el nombre de la columna del Parquet, y es ENGAÑOSO: lo que
+        # guarda es `unit.value.amount` en crudo, que en subasta inversa es el total del
+        # renglón y en el resto de métodos sí es el precio por unidad. Por eso hace falta
+        # el método, y por eso el desglose está en un solo sitio. Ver D-041.
         unidad = (it.get("unidad") or "").strip()
-        cantidad = it.get("cantidad") or 0
-
-        precio = None
-        if monto_linea and monto_linea > 0 and cantidad and float(cantidad) > 0:
-            precio = float(monto_linea) / float(cantidad)
+        metodo = metodos.get(it.get("ocid"))
+        if metodo is None:
+            # Sin método no se sabe qué es `amount`, y el desglose caería en la rama
+            # «precio unitario» por omisión. Un valor por defecto en el campo ambiguo es
+            # exactamente el fallo que se está corrigiendo: se cuenta y se corta abajo.
+            sin_metodo += 1
+            continue
+        precio, monto_linea = desglosar_renglon(
+            metodo, it.get("precio_unitario"), it.get("cantidad")
+        )
 
         if precio and unidad:
             precios[(cpc, anio, unidad)].append(precio)
@@ -153,15 +180,24 @@ def calcular(items: list[dict]) -> tuple[list[tuple], list[tuple]]:
             sin_unidad += 1
 
         m = mercado[(cpc, anio)]
-        # El monto de mercado es la SUMA de los totales de línea. Multiplicar por la
-        # cantidad contaba cada unidad como si costara el total del renglón.
+        # El tamaño de mercado es la suma de los totales de renglón, que ahora es una
+        # cifra derivada y no un campo: en subasta inversa el total viene dado, en el
+        # resto es precio por cantidad.
         m["monto"] += float(monto_linea or 0)
         m["procesos"].add(it.get("ocid"))
 
     # Regla 2.2 del metodo: cardinalidad de entrada y salida. Si casi todo se descarta,
     # algo cambio en la fuente o en la extraccion, y hay que enterarse aqui.
-    print(f"  ítems sin CPC o sin periodo: {sin_cpc:,} · con precio pero sin unidad: {sin_unidad:,}")
-    utiles = len(items) - sin_cpc
+    print(f"  ítems sin CPC o sin periodo: {sin_cpc:,} · con precio pero sin unidad: "
+          f"{sin_unidad:,} · sin método: {sin_metodo:,}")
+    if sin_metodo > len(items) * 0.01:
+        raise SystemExit(
+            f"{sin_metodo:,} de {len(items):,} ítems ({sin_metodo/len(items):.1%}) "
+            f"pertenecen a procesos que no están en el Parquet de procesos. Sin método no "
+            f"se puede saber si `unit.value.amount` es precio o total, y adivinarlo es el "
+            f"fallo de D-041. Republica los meses de la ventana con publicar.py."
+        )
+    utiles = len(items) - sin_cpc - sin_metodo
     if items and utiles / len(items) < 0.5:
         raise SystemExit(
             f"Solo {utiles:,} de {len(items):,} ítems son utilizables ({utiles/len(items):.0%}). "
@@ -199,13 +235,13 @@ def main() -> int:
     print(f"ventana del benchmark: {VENTANA_MESES} meses hasta {anio}-{mes:02d} "
           f"(se excluyen los últimos {MESES_SIN_CERRAR})")
 
-    items = descargar_items(ventana)
-    print(f"ítems leídos: {len(items):,}")
+    items, metodos = descargar_items(ventana)
+    print(f"ítems leídos: {len(items):,} · procesos con método: {len(metodos):,}")
     if not items:
         print("sin ítems: publica primero el Parquet de la ventana")
         return 1
 
-    precio, mercado = calcular(items)
+    precio, mercado = calcular(items, metodos)
     print(f"  precio_cpc:       {len(precio):,} filas (CPC × año × unidad, n >= {N_MINIMO})")
     print(f"  mercado_cpc_prov: {len(mercado):,} filas")
 
