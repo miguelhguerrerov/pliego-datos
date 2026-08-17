@@ -1496,3 +1496,48 @@ todo la regla de subasta inversa. El total de mercado salía **creíble** —6 2
 contra 6 896 M reales, un 91%— porque el volumen lo domina subasta inversa, donde la
 lectura era correcta. Eso es lo que lo mantuvo escondido: **el agregado tapaba el error
 del caso individual**. Hay que recalcular las dos tablas.
+
+---
+
+## D-042 — Los releases se piden por etiqueta, nunca listando
+
+**17 de agosto de 2026.** Salió al intentar recalcular el benchmark tras D-041.
+
+`benchmark.yml` murió con:
+
+```
+meses de la ventana con Parquet: 0 de 24
+AVISO: faltan 24 meses. El benchmark se calcula sobre lo disponible y el n lo refleja.
+ítems leídos: 0 · procesos con método: 0
+sin ítems: publica primero el Parquet de la ventana
+```
+
+Los Parquet **estaban ahí**. `GET /repos/.../releases?per_page=100` devuelve
+**HTTP 200 con cuerpo `[]`** —dos bytes— con token y sin token, mientras
+`GET /repos/.../releases/tags/datos-2025` devuelve el mismo release con sus **60
+activos**. Los tres releases de la ventana suman 159 activos y 73 MB.
+
+No es un problema de permisos, de paginación ni de borrado: es el endpoint de listado.
+
+### El arreglo
+
+`precios.py` pide `releases/tags/datos-AAAA` para cada año de la ventana. Las etiquetas
+son deterministas y son las que ya escribía `publicar.py`, que **siempre** consultó por
+etiqueta. Solo `precios.py` dependía del listado. Con el cambio: **24 de 24 meses**.
+
+### Lo que hacía peor el fallo
+
+El aviso decía «el benchmark se calcula sobre lo disponible y el `n` lo refleja». Con
+cero meses la ejecución cortaba por otro motivo —no había ítems—, pero con un listado
+**a medias** habría publicado un benchmark sobre una fracción de la ventana, comparable
+con el anterior solo en apariencia y sin nada que lo advirtiera.
+
+Ahora corta por debajo de tres cuartos de la ventana. **Una advertencia que no detiene
+nada no protege nada**, y es además el patrón que la regla 5 del método ya señalaba desde
+el otro lado: una alarma que salta sin motivo entrena a ignorarla.
+
+### Regla
+
+**Cualquier acceso a un release va por etiqueta.** Listar es una dependencia sobre un
+comportamiento que ya se demostró poco fiable, y su fallo es silencioso: devuelve una
+lista vacía, no un error.

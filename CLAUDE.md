@@ -62,6 +62,7 @@ Cosas que parecen buena idea al empezar una sesión en frío y no lo son.
 | «Sacamos del portal del SERCOP los datos que faltan» | El enlace lleva un token de 32 bytes cifrados y el buscador tiene CAPTCHA. Y el producto entero depende de que nos sigan sirviendo la descarga masiva. Ver D-040. |
 | «El detalle de un proceso lo pedimos en vivo a su API» | 60 peticiones/min sin cabeceras de límite, y el castigo dura más de doce minutos. En Vercel las funciones comparten IP: un usuario rompería la pantalla para todos. Ver D-035. |
 | «El precio unitario es el total del renglón entre la cantidad» | Solo en **subasta inversa**. En licitación y el resto, `unit.value.amount` YA es el precio por unidad y dividir lo destroza: acero de construcción a 0,0005 USD el kilo. El mismo campo, dos magnitudes. Ver D-041. |
+| «Listo los releases con `GET /releases` y busco el activo» | Ese endpoint devuelve **`[]`** en `pliego-datos` aunque los releases existan y tengan sus activos —HTTP 200, cuerpo de 2 bytes, con token y sin token—, mientras `GET /releases/tags/datos-2025` devuelve los 60. Pedir siempre **por etiqueta**. Ver D-042. |
 
 ---
 
