@@ -373,3 +373,43 @@ la muestra medida. Ese método no aparece en OCDS por estar bajo el umbral de pu
 **Decisión:** no entra en el MVP. Cuando entre, se resuelven los tokens una sola vez para unos
 cientos de entidades relevantes y se recorren mensualmente. Queda por comprobar si el token de
 entidad es estable entre ejercicios o cambia entero cada enero.
+
+---
+
+## Qué trae la fuente y qué no (medido el 16 de agosto de 2026)
+
+Comparación campo por campo entre el dato abierto y el portal oficial del SERCOP. Ver
+`decisiones.md` D-040.
+
+### En el CSV, ruta principal
+
+Además de lo ya documentado, `tender_` trae cuatro campos que se leen desde la migración
+0028: `awardCriteria`, `eligibilityCriteria`, `mainProcurementCategory` y
+`numberOfTenderers`.
+
+### Solo en el JSON
+
+`awardCriteriaDetails` («Calificación por Precio»), los ítems con CPC, los oferentes con
+nombre, las pujas de subasta inversa, las consultas y los lotes.
+
+### En ningún sitio del dato abierto
+
+| Dato | Dónde está |
+|---|---|
+| **Pesos de los criterios** (50% oferta económica…) | Portal, pestaña «Parámetros de Calificación» |
+| Agregado nacional | Portal |
+| Forma de pago, plazo de entrega, vigencia de oferta | Portal, pestaña «Descripción» |
+| Funcionario encargado, costo de pliegos | Portal |
+| Invitaciones a proveedores | Portal, «Ver Invitaciones» |
+| **Los pliegos** | Portal, pestaña «Archivos» |
+
+`documents` viene vacío en **1 264 de 1 264** procesos medidos, en `tender`, `awards` y
+`planning`.
+
+### El enlace al portal no se puede construir
+
+`idSoliCompra` son 32 bytes binarios en base64url (la coma final es el `=` de relleno):
+AES o SHA-256. Y el buscador que lo resolvería usa CAPTCHA (`captccc2`, `captchaBP`).
+
+**Lo que sí se deriva es el código del proceso**, quitando al `ocid` el prefijo y el
+sufijo de entidad. Medido: 1 954 sufijos ↔ 1 954 compradores, correspondencia 1:1.

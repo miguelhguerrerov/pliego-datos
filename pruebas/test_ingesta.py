@@ -65,3 +65,48 @@ def test_la_poda_calcula_bien_el_limite_de_la_ventana():
     enero = dt.date(2026, 1, 10)
     assert _dentro_de_ventana(2025, 2, enero)
     assert not _dentro_de_ventana(2025, 1, enero)
+
+
+# --- D-040: los criterios de calificación venían en el CSV y nadie los leía -------
+
+def test_se_leen_los_criterios_de_calificacion():
+    """Al comparar nuestra ficha con la del portal oficial, la nuestra cuadraba en todo
+    lo que mostraba y se dejaba fuera lo que **ya venía en la fuente**.
+
+    `eligibilityCriteria` le dice al oferente que el precio no decide solo, y es el
+    complemento directo del benchmark: uno dice a qué precio se adjudica, el otro cuánto
+    pesa el precio. Estaba en el CSV desde el primer día."""
+    from ingesta import COLUMNAS_RESUMEN, a_proceso_resumen
+    from normaliza import MesNormalizado
+
+    m = MesNormalizado(2026, 7, tablas={
+        "releases": [{"ocid": "a", "date": "2026-07-13T00:00:00", "tag": '["tender"]',
+                      "buyer_id": "EC-RUC-1560002480001-29112"}],
+        "tender": [{"ocid": "a", "awardCriteria": "ratedCriteria",
+                    "eligibilityCriteria": "Oferta Económica,Participación Ecuatoriana",
+                    "mainProcurementCategory": "works", "numberOfTenderers": "2"}],
+        "planning": [], "awards": [], "suppliers": [],
+    })
+    fila = a_proceso_resumen(m)[0]
+    assert len(fila) == len(COLUMNAS_RESUMEN), (
+        f"{len(fila)} valores contra {len(COLUMNAS_RESUMEN)} columnas"
+    )
+    d = dict(zip(COLUMNAS_RESUMEN, fila))
+    assert d["criterio"] == "ratedCriteria"
+    assert "Participación Ecuatoriana" in d["criterios"]
+    assert d["tipo_compra"] == "works"
+    assert d["n_oferentes"] == 2
+
+
+def test_un_numero_de_oferentes_vacio_no_revienta():
+    """La fuente deja el campo en blanco a menudo. Un `int('')` tumbaría el mes entero."""
+    from ingesta import COLUMNAS_RESUMEN, a_proceso_resumen
+    from normaliza import MesNormalizado
+
+    m = MesNormalizado(2026, 7, tablas={
+        "releases": [{"ocid": "a", "date": "2026-07-13T00:00:00", "tag": '["tender"]', "buyer_id": ""}],
+        "tender": [{"ocid": "a", "numberOfTenderers": "", "awardCriteria": ""}],
+        "planning": [], "awards": [], "suppliers": [],
+    })
+    d = dict(zip(COLUMNAS_RESUMEN, a_proceso_resumen(m)[0]))
+    assert d["n_oferentes"] is None and d["criterio"] is None

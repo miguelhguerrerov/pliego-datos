@@ -1308,3 +1308,81 @@ Ocho pantallas decían «los últimos 24 meses» sobre datos que iban a pasar a 
 una constante, `VENTANA_MESES`, y un texto derivado. El benchmark de precios mantiene sus
 24 meses **a propósito**: lee de los Parquet, no de Postgres, y son dos preguntas
 distintas.
+
+## D-040 — Qué se puede traer del portal oficial y qué no
+
+**16 de agosto de 2026.** Salió de comparar nuestra ficha de proceso con la del SERCOP.
+
+### La comparación
+
+Sobre `LICO-GADPO-2026-21`, campo por campo: **objeto, referencial (94 102,17), 2
+licitadores, publicación 13-07 20:00, cierre de preguntas 15-07 20:00, cierre de ofertas
+23-07 09:00, 13 artículos con CPC** — todo cuadra. Lo que publicamos es correcto.
+
+Lo que faltaba se reparte en dos grupos, y la diferencia entre ellos es lo que importa.
+
+### Grupo 1 — estaba en la fuente y no lo leíamos
+
+Cuatro campos en el CSV de `tender_`, desde el primer día:
+
+| Campo | Qué es |
+|---|---|
+| `awardCriteria` | `ratedCriteria`: el precio compite contra otros factores |
+| `eligibilityCriteria` | «Oferta Económica, Participación Ecuatoriana, Subcontratación, Experiencia General, Experiencia Específica» |
+| `mainProcurementCategory` | Obra, bienes o servicios |
+| `numberOfTenderers` | Contra cuántos se compitió |
+
+El segundo es el complemento directo del benchmark: **uno dice a qué precio se adjudica,
+el otro dice cuánto pesa el precio**. Añadidos en la migración 0028.
+
+### Grupo 2 — no está en el dato abierto y no se puede traer
+
+Comprobado clave por clave sobre el registro OCDS completo, incluidas sus ocho
+extensiones:
+
+- **Los pesos de cada criterio** (Oferta Económica 50%, Experiencia Específica 26%…)
+- Agregado nacional, forma de pago, plazo de entrega, vigencia de oferta
+- Funcionario encargado, costo de pliegos
+- Invitaciones a proveedores
+- **Los pliegos**: `documents` está vacío en 1 264 de 1 264 procesos
+
+### Por qué no se puede automatizar
+
+**El enlace del portal no es derivable.** `idSoliCompra` es un token de 44 caracteres —la
+coma final sustituye el `=` de relleno— que decodifica a **32 bytes binarios**. Es AES o
+SHA-256: sin la clave del SERCOP no hay forma, y si es un hash no la hay ni con ella.
+
+**Y el buscador que lo resolvería tiene CAPTCHA.** El formulario publica por POST a
+`consultarProcesos_exe.php` con los campos `captccc2`, `captchaBP` y `captcha_img`.
+
+**No se intenta rodearlo, y la razón es de negocio antes que de otra cosa:** el producto
+entero depende de que el SERCOP siga sirviéndonos la descarga masiva. Ya vimos con los
+`429` de su API lo rápido que bloquean y lo largo que dura. Arriesgar el acceso por unos
+campos complementarios es un mal cambio.
+
+### Lo que sí se hizo
+
+**El código del proceso sí es derivable, y se midió.** El `ocid` termina en el
+identificador interno de la entidad compradora: sobre 20 000 procesos hay **1 954 sufijos
+distintos y 1 954 compradores distintos**, correspondencia uno a uno.
+
+```
+ocds-5wno2w-LICO-GADPO-2026-21-29112  →  LICO-GADPO-2026-21
+```
+
+La ficha lo muestra con un botón de copiar y un enlace al buscador oficial. No automatiza
+nada, pero convierte «búscalo tú» en «copia esto».
+
+Y la pantalla **dice lo que no tiene**: que el peso de cada criterio está en el portal y
+no en el dato abierto. Un hueco declarado se entiende; uno callado se lee como que no
+existe.
+
+### La vía que de verdad lo resuelve
+
+Los campos del grupo 2 **ya son públicos** en el portal del SERCOP. No hay razón de fondo
+para que no estén en el OCDS, y el estándar tiene una extensión para criterios ponderados
+— el SERCOP ya publica ocho extensiones, una de ellas propia.
+
+La petición es concreta: *que publiquen los pesos de los parámetros de calificación, como
+ya publican los criterios*. Por LOTAIP o al equipo de datos abiertos. Beneficia a todo el
+ecosistema y no solo a nosotros, que es lo que hace que valga la pena pedirla.

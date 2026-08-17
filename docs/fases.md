@@ -74,11 +74,11 @@ Este documento es el tablero. El *por qué* de cada decisión está en `decision
 
 | Actividad | Estado | Nota |
 |---|---|---|
-| Migraciones `0001`–`0020` | Hecho | Toda la estructura en SQL |
+| Migraciones `0001`–`0028` | Hecho | Toda la estructura en SQL |
 | RLS en las 16 tablas | Hecho | El muro vive aquí, no en el frontend |
 | Enmascaramiento de persona natural | Hecho | Vista `security definer` |
 | Flujos: ingesta, agregados, Parquet, taxonomía, benchmark, migrar, compactar | Hecho | |
-| Pruebas | Hecho | **82 verdes** |
+| Pruebas | Hecho | **94 verdes** |
 
 ---
 
@@ -97,6 +97,8 @@ Este documento es el tablero. El *por qué* de cada decisión está en `decision
 | **Entrar con enlace mágico** | **Hecho** | Sin contraseñas (invariante 6) |
 | **Perfil y alta de suscriptor** | **Hecho** | Disparador en `auth.users`, alta en plan gratuito |
 | **Lista de compradores huérfanos** | **Hecho** | Cifra en abierto, nombres tras el muro |
+| **Ficha de proceso** | Hecho | Artículos, licitadores, consultas, pujas, criterios |
+| **Benchmark de precio `/benchmark/[cpc]`** | **Hecho** | 1.931 filas defendibles sobre 498 categorías |
 | Alertas diarias por correo | Pendiente | Invariante 13 |
 | Exportación nocturna de suscriptores | Pendiente | Invariante 14 |
 
@@ -128,6 +130,22 @@ Este documento es el tablero. El *por qué* de cada decisión está en `decision
    y el plan gratuito de Supabase no hace copias.
 4. **Precio y cobro** — activar un plan es hoy una acción manual con una pantalla que la
    pide. Está bien para los primeros clientes y mal para los cincuenta primeros.
+
+---
+
+## Lo que la fuente no da, y está declarado
+
+Medido el 16 de agosto (D-040). No es deuda nuestra: es el límite del dato abierto, y el
+producto lo dice en pantalla en vez de callarlo.
+
+- **Los pesos de los criterios de calificación** —cuánto vale la oferta económica frente a
+  la experiencia— solo están en el portal oficial. La ficha de proceso lo advierte.
+- **Los pliegos**: `documents` viene vacío en 1.264 de 1.264 procesos.
+- **El enlace al portal no se puede construir**: token de 32 bytes cifrados, y el buscador
+  que lo resolvería tiene CAPTCHA. Se da el código del proceso, que sí es derivable.
+
+La vía para cerrarlo es pedir al SERCOP que publique los pesos en el estándar OCDS, que
+ya tiene sitio para criterios ponderados.
 
 ---
 

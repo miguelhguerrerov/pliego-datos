@@ -59,6 +59,8 @@ Cosas que parecen buena idea al empezar una sesión en frío y no lo son.
 | «Sumo estas cifras en el cliente y listo» | PostgREST corta en **1.000 filas**: la portada dio 56 M donde el real eran 3.203 M, sin error visible. Todo `sum`/`count`/`avg` va en una vista. |
 | «Verificar un subdominio aparte en Resend» | El plan gratuito permite un solo dominio y `darkmelon.com` ya lo ocupa. |
 | «Crear otra organización en Supabase para tener más cupo» | El límite de 2 proyectos activos es **por usuario**, no por organización. Comprobado con un 400 explícito. |
+| «Sacamos del portal del SERCOP los datos que faltan» | El enlace lleva un token de 32 bytes cifrados y el buscador tiene CAPTCHA. Y el producto entero depende de que nos sigan sirviendo la descarga masiva. Ver D-040. |
+| «El detalle de un proceso lo pedimos en vivo a su API» | 60 peticiones/min sin cabeceras de límite, y el castigo dura más de doce minutos. En Vercel las funciones comparten IP: un usuario rompería la pantalla para todos. Ver D-035. |
 
 ---
 

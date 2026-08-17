@@ -158,6 +158,14 @@ def a_proceso_resumen(mes: MesNormalizado) -> list[tuple]:
             cierra,
             publicado,
             preguntas,
+            # Los criterios de calificacion venian en el CSV desde el primer dia y nadie
+            # los leia. `criterios` es la lista —«Oferta Economica, Experiencia
+            # Especifica, Participacion Ecuatoriana...»— y le dice al oferente que el
+            # precio no decide solo. Es el complemento del benchmark. Ver D-040.
+            (t.get("awardCriteria") or "").strip() or None,
+            (t.get("eligibilityCriteria") or "").strip()[:400] or None,
+            (t.get("mainProcurementCategory") or "").strip() or None,
+            int(float(t["numberOfTenderers"])) if (t.get("numberOfTenderers") or "").strip() else None,
         ))
     return filas
 
@@ -166,6 +174,7 @@ COLUMNAS_RESUMEN = [
     "ocid", "fecha", "anio", "mes", "estado", "metodo", "cpc", "categoria_id",
     "comprador_ruc", "proveedor_ruc", "referencial", "adjudicado", "provincia",
     "objeto", "cierra", "publicado", "preguntas_hasta",
+    "criterio", "criterios", "tipo_compra", "n_oferentes",
 ]
 
 COLUMNAS_HECHO = [
