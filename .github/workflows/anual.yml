@@ -1,0 +1,63 @@
+name: anual
+
+# Series anuales (D-046): el arbol CPC por año y la tendencia de precios, desde los
+# Parquet publicados. Recalculo completo: es idempotente, tarda ~30-40 min y se
+# autorrepara si un mes se republico.
+#
+# Dia 7 de cada mes, tras publicar-parquet (dia 3) y la clasificacion (dia 5).
+on:
+  schedule:
+    - cron: "0 12 7 * *"
+  workflow_dispatch:
+    inputs:
+      seco:
+        description: "Calcular y mostrar, sin escribir"
+        required: false
+        default: false
+        type: boolean
+      desde:
+        description: "Primer año (por defecto 2015)"
+        required: false
+        default: "2015"
+
+jobs:
+  anual:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Calcular y cargar las series anuales
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python src/anual.py --desde ${{ inputs.desde || '2015' }} ${{ inputs.seco && '--seco' || '' }}
+
+      - name: Compactar
+        if: ${{ !inputs.seco }}
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "src")
+          from clasifica import compactar
+          from carga import conexion, tamano_mb
+          with conexion() as con:
+              antes = tamano_mb(con)
+          compactar("mercado_nodo_anual", "precio_cpc_anual")
+          with conexion() as con:
+              print(f"base: {antes} -> {tamano_mb(con)} MB")
+          PY
+
+      - name: Consultas de producto
+        if: ${{ !inputs.seco }}
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python -m pytest pruebas/test_anual.py -q
