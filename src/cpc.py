@@ -35,12 +35,30 @@ def leer_arbol() -> list[tuple]:
     crudo = (RAIZ / "referencia" / "cpc_clasificacion.csv").read_text(encoding="utf-8-sig")
     filas = list(csv.DictReader(io.StringIO(crudo)))
 
+    # Nombres por codigo, para el heredado de abajo.
+    nombre_de = {f["Codigo"].strip(): f["Descripcion"].strip() for f in filas}
+
     nodos: dict[str, tuple] = {}
+    heredados = 0
     for f in filas:
         codigo = f["Codigo"].strip()
         nivel = int(f["Nivel"])
         nombre = f["Descripcion"].strip()
         padre = f["Codigo_Padre"].strip() or None
+        # Cinco subclases llegan sin nombre del portal (63220, 63290, 85290, 87155,
+        # 88111): vacias en el clasificador, con cero productos en el catalogo VAE y
+        # cero procesos en la base. En la CPC la subclase unica repite el titulo de su
+        # clase, asi que se hereda el nombre del padre: es la derivacion documentada,
+        # no un invento — que es justo lo que enterro a la taxonomia anterior.
+        if nivel == 5 and len(nombre) < 3:
+            nombre_padre = nombre_de.get(codigo[:4], "").strip()
+            if len(nombre_padre) < 3:
+                raise SystemExit(f"cpc_clasificacion: {codigo} sin nombre y su clase "
+                                 f"{codigo[:4]} tampoco lo tiene. Revisar el fichero.")
+            nombre = nombre_padre
+            heredados += 1
+        if nivel < 5 and len(nombre) < 3:
+            raise SystemExit(f"cpc_clasificacion: {codigo} (nivel {nivel}) sin nombre")
         if len(codigo) != nivel:
             raise SystemExit(f"cpc_clasificacion: {codigo!r} tiene longitud "
                              f"{len(codigo)} pero declara nivel {nivel}")
@@ -54,6 +72,14 @@ def leer_arbol() -> list[tuple]:
     for codigo, nivel, _, padre in nodos.values():
         if nivel > 1 and padre not in nodos:
             raise SystemExit(f"cpc_clasificacion: {codigo} cuelga de {padre}, que no existe")
+
+    # Cinco es lo validado el 18-08. Si un fichero nuevo trae mas huecos, no se
+    # heredan en silencio: se revisa la extraccion.
+    if heredados > 5:
+        raise SystemExit(f"cpc_clasificacion: {heredados} subclases sin nombre "
+                         f"(se validaron 5). Revisar la extraccion antes de cargar.")
+    if heredados:
+        print(f"  subclases con nombre heredado de su clase: {heredados}")
 
     reales = {}
     for _, nivel, _, _ in nodos.values():

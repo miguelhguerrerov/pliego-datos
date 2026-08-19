@@ -18,4 +18,10 @@ raramente. Son datos públicos.
 - `umbral_vae.csv`: 30 098 productos con nombre oficial y umbral VAE. Cubre el 97,7 %
   de los CPC en uso y el 98,9 % del monto.
 
+**Huecos conocidos del fichero de clasificación**: cinco subclases llegan sin nombre
+del portal (63220, 63290, 85290, 87155, 88111). Tienen cero productos en el catálogo
+VAE y cero procesos en la base. `src/cpc.py` les hereda el nombre de su clase —en la
+CPC la subclase única repite el título de la clase— y se detiene si un fichero nuevo
+trae más de cinco.
+
 Se cargan con `python src/cpc.py` (flujo `referencia.yml`).
