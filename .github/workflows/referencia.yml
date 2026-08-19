@@ -1,0 +1,38 @@
+name: referencia
+
+# Carga los datos de referencia (clasificacion CPC oficial y catalogo con umbral VAE)
+# en cpc_nivel y cpc_producto. Ver referencia/LEEME.md y D-045.
+#
+# Solo manual: la clasificacion cambia raramente, y cuando cambia hay que actualizar
+# los CSV y los recuentos esperados de src/cpc.py a conciencia, no por cron.
+on:
+  workflow_dispatch:
+    inputs:
+      seco:
+        description: "Validar y mostrar recuentos, sin escribir"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  referencia:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Cargar la clasificacion CPC
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python src/cpc.py ${{ inputs.seco && '--seco' || '' }}
+
+      - name: Pruebas de la taxonomia
+        if: ${{ !inputs.seco }}
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python -m pytest pruebas/test_cpc.py -q
