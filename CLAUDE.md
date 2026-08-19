@@ -269,6 +269,7 @@ correspondiente**, no después.
 | Doc | Archivo | Qué fija |
 |---|---|---|
 | 09 | este `CLAUDE.md` | Invariantes, trampas, hechos verificados |
+| — | `plan-actual.md` | **Qué está en vuelo y qué sigue. Leer primero al abrir una sesión nueva.** |
 | — | `decisiones.md` | Registro de decisiones difíciles de revertir (D-001 a D-010) |
 | 10 | `datos.md` | Esquema exacto de la fuente, matriz de poblado, validaciones, cobertura |
 | 11 | `agregados.md` | Grano y presupuesto en MB de cada tabla, umbrales, válvulas |
