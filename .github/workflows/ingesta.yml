@@ -58,6 +58,11 @@ jobs:
           from carga import conexion
           with conexion() as con:
               with con.cursor() as cur:
+                  # Los abiertos recien cargados toman su CPC de sus items (D-045):
+                  # sin esto el radar pierde la etiqueta de categoria, porque la
+                  # clasificacion mensual llega con ~4 meses de retraso.
+                  cur.execute("select asignar_cpc_desde_items()")
+                  print("cpc desde items:", cur.fetchone()[0], "procesos")
                   cur.execute("refresh materialized view concurrently v_mercado")
                   cur.execute("refresh materialized view concurrently v_portada")
                   cur.execute("refresh materialized view concurrently mercado_nodo")
