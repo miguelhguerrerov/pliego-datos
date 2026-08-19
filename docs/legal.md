@@ -80,6 +80,23 @@ Procedimiento publicado en `/legal/correccion`:
 5. Los datos personales de persona natural se retiran a solicitud, conforme a la LOPDP, sin
    discusión: el enmascaramiento por defecto ya debería hacer innecesaria la solicitud.
 
+### El respaldo también cuenta
+
+La baja de un suscriptor **no termina en Postgres**. El respaldo nocturno del invariante
+14 vive en un repositorio git privado, y **git conserva el historial**: borrar la fila y
+esperar al respaldo siguiente deja el dato en los commits anteriores.
+
+Procedimiento al dar de baja a un suscriptor que lo solicita:
+
+1. Borrar en Postgres (`suscriptor`, `perfil`, `lista_espera`, `envio_log`).
+2. **Purgar el historial del respaldo** en `pliego-app` para esa dirección, o rotar el
+   respaldo entero a un almacén sin historial.
+3. Anotarlo en el registro de incidentes.
+
+Es una consecuencia deliberada de haber elegido git como almacén de respaldo —simple,
+gratuito y auditable— y el precio es este paso manual. Si el volumen de bajas lo hace
+inviable, la señal es mover el respaldo a un almacén con borrado real.
+
 ---
 
 ## 5. Lo que no se hace

@@ -85,6 +85,22 @@ un parámetro, no una migración. Segunda válvula en `agregados.md` §1.
 
 ---
 
+### El respaldo no corrió, o salió vacío
+
+El flujo `respaldo.yml` vive en **pliego-app** (privado), no en pliego-datos: los correos
+de los suscriptores no pueden acabar en un repositorio público. Corre a las 07:00 UTC.
+
+- **Falla con «Falta el secreto SUPABASE_DB_URL»**: hay que añadirlo en
+  *pliego-app → Settings → Secrets → Actions*. Es el mismo valor que ya está en
+  pliego-datos.
+- **Falla con «suscriptor.csv salió con 0 filas»**: se detiene a propósito y **no
+  guarda**. Un respaldo vacío es peor que ninguno, porque da sensación de cobertura. Si
+  la tabla está de verdad vacía, algo se borró: mirar Postgres antes de tocar nada.
+- **Restaurar**: los CSV están en `respaldo/` del repositorio privado, con cabecera.
+  `\copy suscriptor from 'suscriptor.csv' with (format csv, header)`.
+
+---
+
 ## 3. Alarmas
 
 Llegan por correo al operador desde el mismo trabajo nocturno. **Un fallo silencioso es peor
