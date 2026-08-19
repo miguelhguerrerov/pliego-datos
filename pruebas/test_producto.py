@@ -600,3 +600,25 @@ def test_la_cobertura_del_benchmark_es_publica_pero_el_precio_no(con):
     categorías que no tienen ni un precio publicable."""
     cob = _uno(con, "select count(*) from v_benchmark_cobertura")
     assert cob > 300, f"solo {cob} categorías tienen precio publicable; se esperan ~498"
+
+
+# --- D-046: los indices de tupla corrieron y nadie lo vio -------------------------
+
+def test_los_rucs_de_hecho_mes_tienen_forma_de_ruc(con):
+    """El 19-08-2026, quitar una columna de la tupla del resumen corrió los índices
+    fijos de `a_hecho_mes`: el RUC del proveedor pasó a ser el referencial y 5.440
+    proveedores llamados «694.0» nacieron en una noche, con la ingesta en verde.
+
+    Medido antes de escribir esto: en 1,24 M de filas sanas el proveedor es SIEMPRE
+    nulo o un RUC de 13 dígitos. Cero excepciones — la alarma no puede saltar en falso.
+    """
+    for campo in ("proveedor_ruc", "comprador_ruc"):
+        raros = _uno(con, f"""
+            select count(*) from hecho_mes
+            where {campo} is not null and {campo} !~ '^[0-9]{{13}}$'
+        """)
+        assert raros == 0, (
+            f"{raros:,} filas de hecho_mes con {campo} que no es un RUC de 13 dígitos. "
+            f"Los índices de a_hecho_mes volvieron a desalinearse de COLUMNAS_RESUMEN "
+            f"(D-046): revisa la tupla antes de recargar nada."
+        )

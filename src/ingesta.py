@@ -212,14 +212,27 @@ def a_hecho_mes(filas_resumen: list[tuple], anio: int, mes: int) -> list[tuple]:
     Ver docs/decisiones.md D-015.
 
     Sin ocid ni objeto: eso vive en Parquet.
+
+    **Los indices se derivan de COLUMNAS_RESUMEN, nunca se escriben a mano.** El 19 de
+    agosto de 2026 se quito `categoria_id` de la tupla (D-045) y los indices fijos que
+    habia aqui corrieron una posicion en silencio: el RUC del proveedor paso a ser el
+    referencial —proveedores llamados «694.0»—, el monto paso a ser la provincia, y
+    5.440 fichas fantasma aparecieron en una noche. La ingesta salio verde; lo atrapo
+    la consulta de producto del dia siguiente. Ver D-046.
     """
+    i_metodo = COLUMNAS_RESUMEN.index("metodo")
+    i_comprador = COLUMNAS_RESUMEN.index("comprador_ruc")
+    i_proveedor = COLUMNAS_RESUMEN.index("proveedor_ruc")
+    i_referencial = COLUMNAS_RESUMEN.index("referencial")
+    i_adjudicado = COLUMNAS_RESUMEN.index("adjudicado")
+
     cubos: dict[tuple, list] = {}
     for f in filas_resumen:
-        clave = (anio, mes, f[8] or "", f[9] or "", f[5] or "")
+        clave = (anio, mes, f[i_comprador] or "", f[i_proveedor] or "", f[i_metodo] or "")
         cubo = cubos.setdefault(clave, [0, 0.0, 0.0])
         cubo[0] += 1
-        cubo[1] += float(f[10] or 0)
-        cubo[2] += float(f[11] or 0)
+        cubo[1] += float(f[i_referencial] or 0)
+        cubo[2] += float(f[i_adjudicado] or 0)
     return [
         (a, m, c or None, p or None, met or None, n, round(ref, 2), round(adj, 2))
         for (a, m, c, p, met), (n, ref, adj) in cubos.items()
