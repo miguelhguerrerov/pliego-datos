@@ -1779,3 +1779,85 @@ Las URL indexadas `/mercado/[cpc5]` (la subclase es un nodo del árbol). El muro
 3.725 nodos + 30.098 productos cargados · 99,86% de enganche · 886 subclases activas
 en portada · base en 380 MB tras compactar (el UPDATE masivo de la 0032 la llevó a
 456 y el paso de compactación existe exactamente para eso) · migraciones 0031-0037.
+
+---
+
+## D-046 — Once años de análisis sin ampliar la ventana de filas
+
+**19 de agosto de 2026.** Pedido por el cliente: «¿cómo tener más periodo con
+información analizada?». La respuesta no era ampliar la ventana.
+
+### El diagnóstico
+
+La ventana de 12 meses limita las **filas**, no el análisis. Ya eran multianuales
+`entidad_ano` (271 k filas, 2015-2026 — por eso las fichas muestran once años) y
+`hecho_mes` (1,25 M). Lo que faltaba era **un agregado que nadie había construido**:
+el árbol CPC nuevo (D-045) tenía 12 meses menos el corte del invariante 10, o sea
+**8 meses efectivos**, y no podía responder «cómo ha evolucionado este mercado».
+
+Medido antes de decidir: cada mes extra de `proceso_resumen` cuesta ~7 MB (24 meses
+= +81 MB, **no cabe**); el margen hasta la alarma de 420 era de ~29 MB.
+
+### Lo construido
+
+`mercado_nodo_anual` (24 010 filas, 2,8 MB) y `precio_cpc_anual` (17 316 filas,
+2,1 MB) — **5 MB en total**, calculadas por `src/anual.py` desde los Parquet ya
+publicados. Base: 391 → 398 MB.
+
+**El hallazgo que lo hizo posible**: el catálogo electrónico **sí tiene ítems**, en
+`awards`, con monto y CPC — 4 705 de 4 705 releases medidos en 2025-12. Mi afirmación
+de D-043 («catálogo no publica ítems») era cierta solo para `tender.items`. Sin esto
+faltaría el 25 % del monto en toda la serie.
+
+### El cuadre, contra el CSV
+
+La reconstrucción desde Parquet contra `hecho_mes` (adjudicado real del CSV):
+
+| Años cerrados | Razón árbol/CSV |
+|---|---|
+| 2015-2020 | 0,91 – 0,96 |
+| 2021-2023 | 1,02 – 1,05 |
+| 2024-2025 | 0,97 – 1,06 |
+| **2026 (en curso)** | **1,43** |
+
+Las desviaciones tienen explicación: en subasta inversa el ítem trae el **convocado**
+(~7 % sobre el adjudicado, D-041) y algunos procesos no traen ítems. El año en curso
+va alto porque el CSV aún no registró adjudicaciones que los ítems ya declaran — por
+eso la aplicación lo marca «a medias» y `test_anual.py` solo exige el rango 0,60-1,15
+a los años **cerrados**.
+
+### La sonda de DuckDB-WASM, con resultado negativo y salida
+
+**Los activos de release NO sirven para el navegador**: el host final
+(`release-assets.githubusercontent.com`, Azure Blob) **no devuelve
+`Access-Control-Allow-Origin`**. Medido con `fetch` real desde una página servida por
+HTTP: `TypeError: Failed to fetch`, mientras la API de GitHub y jsDelivr desde el
+mismo origen devolvían 200. No es DuckDB ni el navegador: es el alojamiento.
+
+Sí sirven `cdn.jsdelivr.net/gh/...` y `raw.githubusercontent.com`, ambos con
+`Access-Control-Allow-Origin: *`. Y **DuckDB-WASM funciona**: arranque 1 111 ms,
+descarga de 1,7 MB en 319 ms por jsDelivr, consulta sobre 3 725 filas en 618 ms.
+
+→ El «modo análisis» en cliente es **viable**, pero exige publicar los Parquet **en el
+repositorio** (jsDelivr los serviría con CORS y caché) en vez de solo como activos de
+release. jsDelivr limita a ~20 MB por fichero: los Parquet mensuales (0,7 MB) caben de
+sobra. Queda como trabajo aparte, ya sin incógnita técnica.
+
+### Lo que este trabajo rompió, y por qué importa
+
+Quitar `categoria_id` de la tupla del resumen (D-045) **corrió en silencio los índices
+fijos de `a_hecho_mes`**: el RUC del proveedor pasó a ser el referencial —proveedores
+llamados «694.0»—, el adjudicado pasó a ser la provincia, y **5 440 fichas fantasma
+nacieron en una noche**. La ingesta salió verde; lo atraparon las consultas de producto
+del día siguiente, 2 de 30 en rojo.
+
+Es el quinto caso del mismo patrón: **el trabajo termina en verde y el dato está mal**.
+Arreglado en origen —los índices se derivan de `COLUMNAS_RESUMEN` por nombre— y con
+una prueba sobre el DATO: en 1,24 M de filas sanas el RUC es siempre nulo o 13 dígitos,
+cero excepciones, así que la alarma no puede saltar en falso (regla 5).
+
+### Lo que queda para cuando haya clientes
+
+Supabase Pro (25 USD/mes, 8 GB) hace desaparecer la ventana como concepto. El
+disparador son los primeros clientes, no una decisión técnica. Válvula previa si algo
+aprieta: `hecho_mes` (140 MB, regenerable desde Parquet).

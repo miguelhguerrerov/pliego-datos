@@ -68,6 +68,8 @@ Cosas que parecen buena idea al empezar una sesión en frío y no lo son.
 | «Ordeno y filtro la tabla en el cliente» | PostgREST corta en 1.000 filas y el radar tiene 4.393: no caben. Ademas el orden no tendria URL —ni enlazable ni indexable— y filtrar en el navegador exige mandar antes los datos, que es lo que el muro no permite. |
 | «Activo `cacheComponents` para tener PPR» | En Next 16 invierte la cache de la aplicacion entera: todo dinamico salvo lo marcado con `use cache`. Hasta terminar esa migracion, portada y fichas consultarian Supabase en cada visita. Ver D-044. |
 | «Sumo los hijos del arbol para sacar el padre» | Solo el monto y el n.º de contratos son aditivos. Los contratistas DISTINTOS no (la division 54 tiene 1.222 reales contra 1.244 sumando grupos) y las medianas tampoco. Cada nivel se calcula desde los procesos crudos; `test_arbol.py` lo vigila. Ver D-045. |
+| «Indexo la tupla del resumen por posicion» | Quitar una columna corre TODOS los indices en silencio: el RUC del proveedor paso a ser el referencial y nacieron 5.440 fichas fantasma, con la ingesta en verde. Derivar de `COLUMNAS_RESUMEN` por nombre. Ver D-046. |
+| «El navegador puede leer los Parquet de los releases» | El host de activos (Azure Blob) **no manda `Access-Control-Allow-Origin`**: `Failed to fetch`. jsDelivr y raw.githubusercontent si. DuckDB-WASM funciona (arranque 1,1 s, consulta 0,6 s) pero hay que publicar los Parquet EN el repo. Ver D-046. |
 
 ---
 
@@ -293,9 +295,9 @@ correspondiente**, no después.
 | Historico | **140 de 140 meses.** 2.774.263 procesos frente a 2.774.265 de la API |
 | Agregados | 77.693 entidades · 264.276 entidad_ano · 168.151 relaciones · 256 baja_metodo |
 | Taxonomia | **CPC oficial** (D-045): 3.725 nodos + 30.098 productos con VAE · 99,86% de enganche · el LLM murio |
-| Migraciones | 0001-0037 aplicadas. `migrar.yml` las aplica desde Actions, con `recalcular` |
+| Migraciones | 0001-0038 aplicadas. `migrar.yml` las aplica desde Actions, con `recalcular` |
 | Parquet | **Republicandose los 140 meses** con esquema declarado (D-028), 4 tandas |
-| Espacio | 379 MB de 460 presupuestados |
+| Espacio | 398 MB de 460 · series anuales de 11 años incluidas (D-046) |
 | Pruebas | 120+ verdes. `test_arbol.py` vigila que nadie sume los distintos del arbol (D-045) |
 | Aplicacion | Next.js 16.3.1 en Vercel. Portada, radar, buscador, ficha de proveedor y ficha de entidad |
 
