@@ -41,30 +41,30 @@ añadir `SUPABASE_DB_URL` como secreto de Actions en pliego-app.**
 Hecho: perfil-espejo, formulario de lo declarado, validación en la base (0039), portada
 con «busca tu empresa».
 
-Falta:
+**Falta**, por orden de valor:
 
-El análisis completo está en la conversación del 19-08; el resumen operativo:
+1. **`/precio`** con la casilla «acepto el precio anunciado». Es la métrica central de
+   `validacion.md` y sin ella el plan de validación es **inmedible**: sus cuatro
+   umbrales dependen de esta página. `lista_espera` ya tiene `acepta_precio` y su
+   política de RLS. Es el mayor apalancamiento que queda.
+2. **«Mi radar»** en el perfil: `v_radar` filtrado por las categorías del suscriptor
+   (las derivadas del RUC más las aspiracionales), su provincia y su rango de monto.
+   Es lo que crea el hábito de volver.
+3. **«Mis competidores»**: qué ganaron este mes los RUCs declarados y los de sus
+   subclases.
+4. **Alertas por correo**: el perfil ya es su insumo exacto. Bloqueadas por DMARC y por
+   que el respaldo esté corriendo de verdad.
+5. **Instrumentación del embudo**: hoy nada cuenta altas, perfiles completados ni
+   visitas a `/precio`. Sin esto, `validacion.md` no se puede medir aunque exista la
+   página.
 
-1. **Portada**: hoy solo habla del país. Añadir el buscador «escribe tu RUC y mira tu
-   espejo» como bloque central.
-2. **Onboarding de 3 pasos** tras el primer enlace mágico: RUC → confirmación del
-   espejo derivado → frecuencia de resumen.
-3. **`/perfil` como mesa de trabajo**: mi empresa, mi radar, mis mercados, mis
-   compradores huérfanos (muro), mis precios (muro), mis competidores.
-4. **Migración de `perfil`**: añadir `ruc`, `competidores text[]`, `monto_max`, y
-   `origen` por campo (derivado/declarado) para re-derivar sin pisar lo editado.
+**Dos decisiones del cliente, aún sin responder**:
+- ¿El radar filtrado por perfil es gratis (lo propuesto) o va tras el muro?
+- ¿Las adjudicaciones de competidores son gratis —dato público reorganizado— y solo la
+  comparativa de precios se paga?
 
-**El hallazgo que ordena el diseño**: el RUC ya es el perfil. Medido — de un RUC se
-derivan sus categorías (`v_proveedor_categoria`), sus competidores (364 en sus
-subclases), sus compradores huérfanos (188) y su provincia. **4.232 proveedores del
-núcleo tienen categorías derivables y 4.195 huérfanos ya calculados.** Lo declarado
-queda solo para lo que los datos no saben: categorías aspiracionales, competidores a
-vigilar fuera de su subclase, provincias de interés, rango de monto.
-
-**Dos decisiones del cliente pendientes**:
-- ¿El radar filtrado por perfil es gratis (propuesto) o va tras el muro?
-- ¿Las adjudicaciones de competidores son gratis y solo la comparativa de precios se
-  paga?
+Mientras no se respondan, lo construido asume: **radar filtrado gratis**, y **precios
+siempre tras el muro**.
 
 ### Paso C — Resto de la auditoría (`informe-auditoria-2026-08.md`)
 
@@ -85,8 +85,6 @@ Por orden de urgencia real:
   Parquet **en el repositorio** porque los activos de release no dan CORS.
 - **Supabase Pro** cuando entren los primeros clientes: hace desaparecer la ventana de
   12 meses como concepto.
-- **`/precio`** con la casilla de «acepto el precio anunciado»: es la métrica central de
-  `validacion.md` y hoy no existe, así que el plan de validación es inmedible.
 
 ---
 
