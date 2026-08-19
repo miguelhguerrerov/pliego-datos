@@ -39,13 +39,25 @@ def test_proceso_resumen_solo_guarda_la_ventana_del_radar():
 
 # --- hecho_mes ------------------------------------------------------------------
 
+def _fila_resumen(**valores):
+    """Una tupla de resumen construida DESDE COLUMNAS_RESUMEN, por nombre.
+
+    Construirla a mano con posiciones fijas es exactamente el fallo D-046: al quitar
+    `categoria_id` de la tupla real, este fixture siguió probando el layout viejo y
+    la prueba paso a fallar por el motivo equivocado. Por nombre, no puede."""
+    from ingesta import COLUMNAS_RESUMEN
+    return tuple(valores.get(c) for c in COLUMNAS_RESUMEN)
+
+
 def test_hecho_mes_colapsa_al_grano_minimo():
     """Sin ocid ni objeto: es lo que permite guardar once años sin romper los 500 MB."""
     filas = [
-        # (ocid, fecha, anio, mes, estado, metodo, cpc, cat, comp, prov, ref, adj, ...)
-        ("a", None, 2024, 2, "cerrado", "Menor Cuantia", None, None, "C1", "P1", 100, 90),
-        ("b", None, 2024, 2, "cerrado", "Menor Cuantia", None, None, "C1", "P1", 200, 180),
-        ("c", None, 2024, 2, "cerrado", "Licitacion", None, None, "C1", "P2", 500, 400),
+        _fila_resumen(ocid="a", anio=2024, mes=2, estado="cerrado", metodo="Menor Cuantia",
+                      comprador_ruc="C1", proveedor_ruc="P1", referencial=100, adjudicado=90),
+        _fila_resumen(ocid="b", anio=2024, mes=2, estado="cerrado", metodo="Menor Cuantia",
+                      comprador_ruc="C1", proveedor_ruc="P1", referencial=200, adjudicado=180),
+        _fila_resumen(ocid="c", anio=2024, mes=2, estado="cerrado", metodo="Licitacion",
+                      comprador_ruc="C1", proveedor_ruc="P2", referencial=500, adjudicado=400),
     ]
     hechos = a_hecho_mes(filas, 2024, 2)
     assert len(hechos) == 2
