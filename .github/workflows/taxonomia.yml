@@ -73,6 +73,10 @@ jobs:
               with con.cursor() as cur:
                   cur.execute("refresh materialized view concurrently v_mercado")
                   cur.execute("refresh materialized view concurrently v_portada")
+                  cur.execute("refresh materialized view concurrently mercado_nodo")
+                  cur.execute("refresh materialized view concurrently mercado_nodo_metodo")
+                  cur.execute("refresh materialized view concurrently mercado_nodo_contratista")
+                  cur.execute("refresh materialized view concurrently mercado_nodo_contratante")
               con.commit()
           print("v_mercado y v_portada refrescadas")
           PY
