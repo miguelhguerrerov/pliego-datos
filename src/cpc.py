@@ -145,22 +145,31 @@ def main() -> int:
     if args.seco:
         return 0
 
-    from carga import conexion, reemplazar
+    from carga import conexion
 
     with conexion() as con:
-        # El arbol se carga por niveles: la FK del padre exige que el padre ya exista.
+        # UPSERT y no vaciar-y-recargar: `proceso_resumen.cpc_nodo` referencia estos
+        # nodos por FK desde la 0032, asi que un DELETE masivo esta prohibido por
+        # construccion (y asi debe ser). Por niveles, porque el padre debe existir.
         with con.cursor() as cur:
-            # `reemplazar` truncaria sin respetar la FK circular; aqui se borra en
-            # orden inverso y se inserta en orden.
+            for nivel in (1, 2, 3, 4, 5):
+                cur.executemany(
+                    "insert into cpc_nivel (codigo, nivel, nombre, padre) "
+                    "values (%s, %s, %s, %s) "
+                    "on conflict (codigo) do update "
+                    "set nivel = excluded.nivel, nombre = excluded.nombre, "
+                    "    padre = excluded.padre",
+                    [x for x in arbol if x[1] == nivel],
+                )
+            # Nodos que un fichero nuevo ya no traiga: se podan. Si alguno sigue
+            # referenciado por procesos, la FK detiene la carga — correcto: una
+            # clasificacion no encoge en silencio debajo de datos vivos.
+            cur.execute(
+                "delete from cpc_nivel where codigo != all(%s)",
+                ([x[0] for x in arbol],),
+            )
+            # cpc_producto no tiene dependientes: reemplazo simple.
             cur.execute("delete from cpc_producto")
-            cur.execute("delete from cpc_nivel")
-        for nivel in (1, 2, 3, 4, 5):
-            lote = [x for x in arbol if x[1] == nivel]
-            with con.cursor() as cur:
-                with cur.copy("copy cpc_nivel (codigo, nivel, nombre, padre) from stdin") as cp:
-                    for fila in lote:
-                        cp.write_row(fila)
-        with con.cursor() as cur:
             with cur.copy("copy cpc_producto (codigo, nombre, umbral_vae, subclase) from stdin") as cp:
                 for fila in productos:
                     cp.write_row(fila)
