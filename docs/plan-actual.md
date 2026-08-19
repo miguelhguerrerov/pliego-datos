@@ -17,30 +17,31 @@ lo que está en vuelo y lo que sigue.
 | Base | 386–398 MB de 460 |
 | Pruebas | 119 locales verdes + las de base en Actions |
 
-### En vuelo ahora mismo
+### Resuelto el 19-08 por la noche
 
-- **Recarga de 2026-07 y 2026-08** tras el fallo de índices (D-046). `hecho_mes` ya
-  está limpio (0 RUC malformados).
-- **Pendiente inmediato**: correr `agregados.yml` cuando la ingesta termine. Reconstruye
-  `entidad` y con ello las **5.441 fichas que hoy salen sin monto** (son consecuencia
-  del fallo de índices, no un problema nuevo). Verificación: `v_proveedor` con
-  `monto_base > 0` debe superar el 90%.
+- Recarga de 2026-07/08 y `agregados` en verde. **Fichas al 100% completas** (21.141 de
+  21.142); las 5.441 fantasma del fallo de índices desaparecieron.
+- **Respaldo de suscriptores hecho** (`respaldo.yml` en pliego-app). ⚠ **Requiere que el
+  cliente añada el secreto `SUPABASE_DB_URL` en pliego-app** → Settings → Secrets →
+  Actions. Hasta entonces el flujo falla con un mensaje explícito.
+- **Perfil-espejo y portada** hechos (D-047).
 
 ---
 
 ## Lo que sigue, en orden
 
-### Paso A — Respaldo de suscriptores (invariante 14) · BLOQUEANTE del funnel
+### Paso A — Respaldo de suscriptores · HECHO, falta un secreto
 
-**Por qué antes del funnel**: el funnel añade datos de usuario irreemplazables (RUC,
-categorías declaradas, competidores). Hoy **no existe ningún respaldo** y el plan
-gratuito de Supabase no tiene copias. Hay 1 suscriptor real y `lista_espera` será el
-registro del test de precio.
+`respaldo.yml` en pliego-app (privado, para que los correos no acaben en el repo
+público). Se detiene y no guarda si `suscriptor` sale vacío. **Acción del cliente:
+añadir `SUPABASE_DB_URL` como secreto de Actions en pliego-app.**
 
-Un flujo nocturno que vuelca `suscriptor`, `perfil`, `lista_espera` y `envio_log` al
-repositorio privado (`pliego-app`), cifrado o en CSV plano según se decida. ~20 líneas.
+### Paso B — El funnel · PARCIALMENTE HECHO (D-047)
 
-### Paso B — El funnel (analizado, sin programar aún)
+Hecho: perfil-espejo, formulario de lo declarado, validación en la base (0039), portada
+con «busca tu empresa».
+
+Falta:
 
 El análisis completo está en la conversación del 19-08; el resumen operativo:
 

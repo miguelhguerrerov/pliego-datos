@@ -1861,3 +1861,78 @@ cero excepciones, así que la alarma no puede saltar en falso (regla 5).
 Supabase Pro (25 USD/mes, 8 GB) hace desaparecer la ventana como concepto. El
 disparador son los primeros clientes, no una decisión técnica. Válvula previa si algo
 aprieta: `hecho_mes` (140 MB, regenerable desde Parquet).
+
+---
+
+## D-047 — El perfil es un espejo, no un formulario
+
+**19 de agosto de 2026.** Pedido por el cliente: «cuando me registro no tengo más
+funcionalidades en mi perfil; sería interesante registrar mis productos, mis
+competidores, mi ciudad…».
+
+### Lo que había
+
+`/perfil` mostraba tres cosas: tu correo, tu plan y «escribe a hola@darkmelon.com».
+Un callejón sin salida — nada que configurar y ninguna razón para volver. Y la portada
+hablaba solo del país: 2,77 millones de procesos, todo cierto y todo ajeno.
+
+### La medición que cambió el diseño
+
+La petición pedía un formulario. Los datos dicen otra cosa: **el RUC ya es el perfil.**
+De un RUC del tramo objetivo se derivan, sin preguntar nada:
+
+| Dato | Fuente |
+|---|---|
+| Sus categorías | `v_proveedor_categoria` |
+| Sus competidores | 364 contratistas en sus subclases (`mercado_nodo_contratista`) |
+| Sus compradores huérfanos | 188, ya calculados |
+| Su provincia y trayectoria | `entidad`, `entidad_ano` (11 años) |
+
+**4 232 proveedores del núcleo tienen categorías derivables y 4 195 huérfanos ya
+calculados.** Preguntar lo que ya sabemos es fricción, y además transmite que no
+tenemos los datos — lo contrario del producto.
+
+Así que el formulario pide **una cosa**: el RUC. Y lo declarado se reduce a lo que
+ningún dato puede adivinar: categorías **aspiracionales** (lo que quiere vender y aún
+no vende — la tesis del producto), provincias donde quiere trabajar (que no es donde
+está domiciliado), rango de contrato que puede atender, y competidores **fuera de su
+subclase** (los de dentro salen solos).
+
+### Lo derivado no se guarda
+
+Ni una copia. Se consulta en vivo desde el RUC y siempre está fresco. Guardar una copia
+sería crear dos verdades que se desincronizan: el error de la taxonomía del LLM en
+pequeño.
+
+### Una deuda de D-045 que salió aquí
+
+`perfil.categorias` era `integer[]` y guardaba los `categoria_id` del LLM. Esa tabla se
+borró en la fase 6 y **la columna llevaba días apuntando a identificadores que ya no
+existían**. Vacía en la única fila, así que no se perdió nada. Ahora es `text[]` con
+códigos del árbol CPC.
+
+### La validación vive en la base
+
+Un código CPC inexistente produciría un radar vacío y el suscriptor concluiría que no
+hay trabajo en lo suyo — la clase de fallo silencioso que el proyecto persigue. El
+trigger de la 0039 rechaza RUC mal formado, códigos fuera de `cpc_nivel` y rangos
+invertidos. Probado con las tres formas de basura: rechazadas; con datos válidos:
+aceptado.
+
+### La portada, invertida
+
+Lo primero tras el titular ya no son las cifras del país sino **«busca tu empresa y
+mira lo que el Estado ya sabe de ti»**. Es el paso natural del embudo: el canal
+principal son las ~21 000 fichas indexadas (`modelo-negocio.md` §6) y la gente llega
+buscándose a sí misma. Las cifras del país describen el producto; no convierten.
+
+### Lo que queda del funnel
+
+- **`/precio`** con la casilla «acepto el precio anunciado»: es la métrica central de
+  `validacion.md` y sin ella el plan de validación es inmedible. `lista_espera` ya tiene
+  la columna `acepta_precio`.
+- **Alertas por correo**: el perfil poblado es justo su insumo (`categorias` +
+  `provincias` + `monto_min/max` + `frecuencia`). Bloqueadas por DMARC y por el
+  respaldo, ambos de la auditoría.
+- **Dos decisiones del cliente**: ¿el radar filtrado por perfil es gratis? ¿las
+  adjudicaciones de competidores son gratis y solo la comparativa de precios se paga?
