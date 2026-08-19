@@ -50,7 +50,7 @@ jobs:
           from carga import conexion, tamano_mb
           with conexion() as con:
               antes = tamano_mb(con)
-          compactar("proceso_resumen", "categoria", "precio_cpc", "mercado_cpc_prov")
+          compactar("proceso_resumen", "precio_cpc", "mercado_cpc_prov")
           with conexion() as con:
               print(f"base: {antes} -> {tamano_mb(con)} MB")
           PY

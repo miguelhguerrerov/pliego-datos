@@ -1,67 +1,43 @@
 name: taxonomia
 
-# Reconstruye la taxonomia desde el CPC de los Parquet. Ver docs/decisiones.md D-030.
+# Asigna el CPC de cabecera desde los items del Parquet publicado y recupera el
+# referencial de subasta inversa. Ver D-045: la taxonomia del LLM murio; los nombres
+# son los oficiales de cpc_nivel y aqui solo se ASIGNA, no se nombra.
 #
-# No va en el trabajo diario: la taxonomia es estable por construccion —la subclase CPC
-# no cambia— y solo hay que rehacerla cuando aparecen subclases nuevas. Los procesos
-# nuevos de cada dia los recategoriza `agregados.yml` con el paso de pendientes.
+# Mensual, dia 5, tras la publicacion mensual de Parquet (dia 3). Lo del dia a dia lo
+# cubren la ingesta (clasificacion_previa + asignar_cpc_desde_items).
 on:
   schedule:
-    - cron: "0 12 5 * *"     # dia 5, tras la publicacion mensual de Parquet
+    - cron: "0 12 5 * *"
   workflow_dispatch:
     inputs:
-      sin_modelo:
-        description: "Nombrar solo con la descripcion oficial, sin llamar al modelo"
-        required: false
-        default: false
-        type: boolean
       seco:
-        description: "Mostrar los emparejamientos sin escribir nada"
-        required: false
-        default: false
-        type: boolean
-      solo_cercania:
-        description: "Solo asignar por cercania, sin reconstruir la taxonomia"
+        description: "Calcular y mostrar, sin escribir"
         required: false
         default: false
         type: boolean
 
 jobs:
-  construir:
+  clasificar:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-      # numpy lo usa la asignacion por cercania. Estaba solo en clasificar.yml,
-      # asi que el paso fallo al final, despues de 37 minutos de trabajo bueno.
-      - run: pip install -r requirements.txt numpy
+      - run: pip install -r requirements.txt
 
-      - name: Construir taxonomia y recategorizar
-        if: ${{ !inputs.solo_cercania }}
+      - name: Asignar CPC desde los Parquet
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-          DEEPINFRA_API_KEY: ${{ secrets.DEEPINFRA_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: |
-          python src/taxonomia.py ${{ inputs.sin_modelo && '--sin-modelo' || '' }}
+        run: python src/clasifica_cpc.py ${{ inputs.seco && '--seco' || '' }}
 
-      - name: Asignar por cercania lo que no puede tener CPC
-        # Los procesos en planificacion NUNCA reciben CPC: el JSON troceado por metodo
-        # no contiene ni un release en esa fase, porque el metodo aun no existe. Son
-        # ~13.000 procesos y son el radar entero. Ver src/clasifica.py.
-        env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-          DEEPINFRA_API_KEY: ${{ secrets.DEEPINFRA_API_KEY }}
-        run: python src/clasifica.py --por-texto ${{ inputs.seco && '--seco' || '' }}
-
-      - name: Refrescar el resumen de mercados
-        # Materializada porque el indice expiraba al calcularla al vuelo (0021). Como
-        # toda tabla derivada, si nadie la refresca miente en silencio: dira las cifras
-        # del dia anterior sin avisar de que son viejas.
+      - name: Refrescar el arbol de mercado
+        if: ${{ !inputs.seco }}
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
@@ -71,14 +47,13 @@ jobs:
           from carga import conexion
           with conexion() as con:
               with con.cursor() as cur:
-                  cur.execute("refresh materialized view concurrently v_mercado")
                   cur.execute("refresh materialized view concurrently v_portada")
                   cur.execute("refresh materialized view concurrently mercado_nodo")
                   cur.execute("refresh materialized view concurrently mercado_nodo_metodo")
                   cur.execute("refresh materialized view concurrently mercado_nodo_contratista")
                   cur.execute("refresh materialized view concurrently mercado_nodo_contratante")
               con.commit()
-          print("v_mercado y v_portada refrescadas")
+          print("agregados del arbol refrescados")
           PY
 
       - name: Compactar
@@ -96,14 +71,15 @@ jobs:
           from carga import conexion, tamano_mb
           with conexion() as con:
               antes = tamano_mb(con)
-          compactar("proceso_resumen", "categoria", "precio_cpc", "mercado_cpc_prov")
+          compactar("proceso_resumen", "precio_cpc", "mercado_cpc_prov")
           with conexion() as con:
               print(f"base: {antes} -> {tamano_mb(con)} MB")
           PY
 
       - name: Consultas de producto
-        # Una taxonomia que se construye sin error puede dejar el 90% de los procesos sin
-        # categoria. Ver docs/metodo.md regla 1.
+        # Una clasificacion que corre sin error puede dejar el 90% sin CPC.
+        # Ver docs/metodo.md regla 1.
+        if: ${{ !inputs.seco }}
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-        run: python -m pytest pruebas/test_producto.py -q
+        run: python -m pytest pruebas/test_producto.py pruebas/test_arbol.py -q

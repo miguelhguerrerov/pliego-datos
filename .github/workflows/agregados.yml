@@ -17,12 +17,24 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
-      - name: Clasificar lo recargado por la ingesta
-        # La ingesta hace borrado y copia del mes: las filas nuevas entran sin
-        # categoria. Sin esto, los dos meses del radar se descategorizan cada dia.
+      - name: CPC de los abiertos
+        # La ingesta preserva el cpc en las recargas (clasificacion_previa) y los
+        # abiertos lo toman de sus items (0036). El clasificador de texto del LLM
+        # murio con la taxonomia (D-045): la planificacion queda sin categoria hasta
+        # que el CPC exista de verdad.
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-        run: python src/clasifica.py --pendientes
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "src")
+          from carga import conexion
+          with conexion() as con:
+              with con.cursor() as cur:
+                  cur.execute("select asignar_cpc_desde_items()")
+                  print("cpc desde items:", cur.fetchone()[0])
+              con.commit()
+          PY
 
       - name: Recalcular agregados
         env:
@@ -42,14 +54,13 @@ jobs:
           from carga import conexion
           with conexion() as con:
               with con.cursor() as cur:
-                  cur.execute("refresh materialized view concurrently v_mercado")
                   cur.execute("refresh materialized view concurrently v_portada")
                   cur.execute("refresh materialized view concurrently mercado_nodo")
                   cur.execute("refresh materialized view concurrently mercado_nodo_metodo")
                   cur.execute("refresh materialized view concurrently mercado_nodo_contratista")
                   cur.execute("refresh materialized view concurrently mercado_nodo_contratante")
               con.commit()
-          print("v_mercado y v_portada refrescadas")
+          print("agregados del arbol refrescados")
           PY
 
       - name: Guardias sobre la base cargada

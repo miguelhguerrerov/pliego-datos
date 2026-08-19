@@ -142,7 +142,6 @@ def a_proceso_resumen(mes: MesNormalizado) -> list[tuple]:
             estado_de_tag(r.get("tag")),
             metodo_base(t.get("procurementMethodDetails")),
             None,                                   # cpc: solo desde la ruta JSON
-            None,                                   # categoria_id: la pone clasifica.py
             extraer_ruc(r.get("buyer_id")),
             proveedor.get(ocid),
             numero(t.get("value_amount")) or presupuesto.get(ocid),
@@ -171,7 +170,7 @@ def a_proceso_resumen(mes: MesNormalizado) -> list[tuple]:
 
 
 COLUMNAS_RESUMEN = [
-    "ocid", "fecha", "anio", "mes", "estado", "metodo", "cpc", "categoria_id",
+    "ocid", "fecha", "anio", "mes", "estado", "metodo", "cpc",
     "comprador_ruc", "proveedor_ruc", "referencial", "adjudicado", "provincia",
     "objeto", "cierra", "publicado", "preguntas_hasta",
     "criterio", "criterios", "tipo_compra", "n_oferentes",
@@ -291,10 +290,10 @@ def procesar_mes(anio: int, mes: int, con, seco: bool, forzar: bool) -> str:
     hechos = a_hecho_mes(filas, anio, mes)
     nombres = a_entidad_nombre(normalizado)
     with con.cursor() as cur:
-        # La ingesta NO es dueña de `cpc` ni de `categoria_id`: los pone `taxonomia.py`
-        # desde los ítems del Parquet. El borrado y copia se los llevaba por delante, y
-        # cada pasada dejaba el radar sin categorías hasta que alguien reconstruía la
-        # taxonomía entera — 35 minutos por dos meses recargados.
+        # La ingesta NO es dueña de `cpc`: lo pone `clasifica_cpc.py` desde los ítems
+        # del Parquet (mensual) y `asignar_cpc_desde_items()` para los abiertos (diario).
+        # El borrado y copia se lo llevaba por delante, y cada pasada dejaba el radar
+        # sin categorías hasta que alguien reconstruía la clasificación entera.
         #
         # `--pendientes` no bastaba: reasigna copiando de procesos ya clasificados, así
         # que tras una recarga completa no tiene de dónde copiar y devuelve cero.
@@ -303,8 +302,8 @@ def procesar_mes(anio: int, mes: int, con, seco: bool, forzar: bool) -> str:
         # que no le pertenecen. Ver docs/decisiones.md D-038.
         cur.execute("""
             create temp table clasificacion_previa on commit drop as
-            select ocid, cpc, categoria_id from proceso_resumen
-            where anio=%s and mes=%s and categoria_id is not null
+            select ocid, cpc from proceso_resumen
+            where anio=%s and mes=%s and cpc is not null
         """, (anio, mes))
         cur.execute("select count(*) from clasificacion_previa")
         preservadas = cur.fetchone()[0]
@@ -317,7 +316,7 @@ def procesar_mes(anio: int, mes: int, con, seco: bool, forzar: bool) -> str:
         with con.cursor() as cur:
             cur.execute("""
                 update proceso_resumen p
-                   set cpc = c.cpc, categoria_id = c.categoria_id
+                   set cpc = c.cpc
                   from clasificacion_previa c
                  where p.ocid = c.ocid
             """)

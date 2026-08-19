@@ -14,7 +14,7 @@ on:
       tablas:
         description: "Tablas a compactar, separadas por espacio"
         required: false
-        default: "proceso_resumen hecho_mes entidad entidad_ano relacion categoria"
+        default: "proceso_resumen hecho_mes entidad entidad_ano relacion"
         type: string
 
 jobs:

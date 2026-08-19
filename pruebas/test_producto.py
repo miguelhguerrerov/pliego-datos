@@ -87,84 +87,41 @@ def test_el_objeto_contractual_no_es_un_codigo(con):
     )
 
 
-# --- D-021: categorías duplicadas ----------------------------------------------
+# --- D-045: el arbol CPC oficial sustituyo a la taxonomia del LLM ----------------
 
-def test_las_categorias_no_estan_duplicadas(con):
-    """400 grupos daban solo 257 nombres distintos: «Material de oficina» partido en
-    siete. El benchmark repartido entre siete da medianas sobre un séptimo de las
-    observaciones, y el umbral de n<5 empieza a ocultar categorías con miles de procesos."""
-    total = _uno(con, "select count(*) from categoria")
-    if not total:
-        pytest.skip("sin taxonomía construida")
-    duplicados = _uno(
-        con, "select count(*) from (select nombre from categoria group by 1 having count(*) > 1) x"
-    )
-    assert duplicados == 0, (
-        f"{duplicados} nombres de categoría aparecen más de una vez. "
-        f"Ejecuta `clasifica.py --fusionar` (D-021)."
+def test_todo_proceso_con_cpc_engancha_al_arbol(con):
+    """La invariante aritmética: si un proceso trae CPC, su nodo es una consecuencia
+    del código (subclase, o clase si la subclase no existe). El 0,5% que no engancha
+    es el cubo «sin clasificar», visible en /mercado — pero no puede crecer en
+    silencio."""
+    total = _uno(con, "select count(*) from proceso_resumen where cpc is not null")
+    sin_nodo = _uno(con, "select count(*) from proceso_resumen "
+                         "where cpc is not null and cpc_nodo is null")
+    assert sin_nodo / max(total, 1) < 0.01, (
+        f"{sin_nodo:,} de {total:,} procesos con CPC no enganchan al árbol. "
+        f"O la fuente cambió de códigos o cpc_nivel está incompleto (D-045)."
     )
 
 
-def test_ninguna_categoria_huerfana(con):
-    """Un proceso apuntando a una categoría que ya no existe queda invisible en
-    cualquier filtro por categoría."""
-    huerfanos = _uno(
-        con,
-        "select count(*) from proceso_resumen p where p.categoria_id is not null "
-        "and not exists (select 1 from categoria c where c.id = p.categoria_id)",
-    )
-    assert huerfanos == 0, f"{huerfanos} procesos apuntan a una categoría inexistente"
-
-
-# --- D-022: la ingesta diaria descategorizaba el radar --------------------------
-
-def test_los_meses_del_radar_estan_clasificados(con):
-    """La ingesta hace delete+copy del mes: las filas recargadas entran sin categoría.
-    Como el trabajo diario recarga el mes en curso y el anterior, el radar se
-    descategorizaba cada mañana — sin ningún error visible."""
-    if not _uno(con, "select count(*) from categoria"):
-        pytest.skip("sin taxonomía construida")
-
-    total = _uno(
-        con,
-        "select count(*) from proceso_resumen where objeto is not null "
-        "and fecha >= current_date - interval '60 days'",
-    )
-    if not total:
-        pytest.skip("sin procesos recientes")
-    clasificados = _uno(
-        con,
-        "select count(*) from proceso_resumen where objeto is not null "
-        "and categoria_id is not null and fecha >= current_date - interval '60 days'",
-    )
-    # El techo alcanzable **bajó a propósito** al pasar la taxonomía al CPC (D-030), y
-    # eso no es una regresión: un proceso en planificación no puede recibir CPC nunca,
-    # porque el JSON troceado por método no contiene ni un release en esa fase. Se le
-    # busca la categoría más cercana por texto, y solo el 28% supera el umbral.
-    #
-    # Bajar el umbral para llenar esta cifra sería exactamente lo contrario de lo que
-    # quiere esta prueba. Medido en seco, por debajo de 0,55 los emparejamientos son:
-    # «alprostadil» → «Equipos Informáticos», «baterías sanitarias» → «Productos
-    # Veterinarios». Un dato falso que parece bueno es peor que un hueco visible.
-    assert clasificados / total > 0.5, (
-        f"solo {clasificados} de {total} procesos de los últimos 60 días tienen "
-        f"categoría. El paso `clasifica.py --pendientes` debe correr tras la ingesta "
-        f"diaria (D-022)."
-    )
-
-
-def test_todo_proceso_con_cpc_tiene_categoria(con):
-    """La invariante de verdad, y la que sí debe ser del 100%: si un proceso trae CPC,
-    su categoría es una consecuencia aritmética del código —los cinco primeros dígitos—
-    y no puede faltar. Aquí no hay umbral ni modelo que valgan.
-
-    Es lo que separa una regresión real (la ingesta descategorizó el radar) de una
-    limitación conocida (los procesos en planificación no tienen CPC)."""
-    huecos = _uno(con, "select count(*) from proceso_resumen "
-                       "where cpc is not null and categoria_id is null")
-    assert huecos == 0, (
-        f"{huecos:,} procesos tienen CPC y no tienen categoría. La asignación por CPC "
-        f"no es opcional ni aproximada: ejecuta `taxonomia.py`."
+def test_los_abiertos_con_items_tienen_cpc(con):
+    """El radar depende de esto: los abiertos toman su CPC de sus propios ítems
+    (0036). Si la función deja de correr, la etiqueta desaparece sin error."""
+    con_items = _uno(con, """
+        select count(distinct i.ocid) from proceso_item i
+        join proceso_resumen p using (ocid)
+        where i.cpc is not null and p.estado in ('abierto', 'planificacion')
+    """)
+    if con_items < 20:
+        pytest.skip("casi ningún abierto con ítems ahora mismo")
+    clasificados = _uno(con, """
+        select count(distinct i.ocid) from proceso_item i
+        join proceso_resumen p using (ocid)
+        where i.cpc is not null and p.estado in ('abierto', 'planificacion')
+          and p.cpc is not null
+    """)
+    assert clasificados / con_items > 0.9, (
+        f"solo {clasificados} de {con_items} abiertos con ítems tienen CPC de "
+        f"cabecera: `asignar_cpc_desde_items()` no corre tras la ingesta."
     )
 
 
@@ -173,14 +130,11 @@ def test_todo_proceso_con_cpc_tiene_categoria(con):
 def test_los_compradores_de_una_categoria_existen(con):
     """La consulta central del producto: qué entidades compran una categoría dada.
     Si esto devuelve vacío, no hay compradores huérfanos ni benchmark que valgan."""
-    if not _uno(con, "select count(*) from categoria"):
-        pytest.skip("sin taxonomía construida")
-
     with con.cursor() as cur:
         cur.execute("""
-            select c.nombre, count(distinct p.comprador_ruc) compradores
+            select n.nombre, count(distinct p.comprador_ruc) compradores
             from proceso_resumen p
-            join categoria c on c.id = p.categoria_id
+            join cpc_nivel n on n.codigo = p.cpc_nodo
             where p.adjudicado > 0
             group by 1 order by 2 desc limit 1
         """)
@@ -398,13 +352,13 @@ def test_el_objeto_en_planificacion_no_es_el_codigo_del_expediente(con):
 def test_el_mercado_por_categoria_devuelve_datos(con):
     """Es la antesala del benchmark y el destino de los enlaces de categoría. Una vista
     que existe y devuelve cero filas se despliega en verde."""
-    n = _uno(con, "select count(*) from v_mercado")
-    assert n > 500, f"v_mercado devuelve {n} categorías; se esperan más de mil"
+    n = _uno(con, "select count(*) from mercado_nodo where nivel = 5 and n_procesos > 0")
+    assert n > 500, f"solo {n} subclases con actividad; se esperan cientos (había 921)"
 
-    completas = _uno(con, "select count(*) from v_mercado where monto > 0 and n_proveedores > 0")
+    completas = _uno(con, "select count(*) from mercado_nodo "
+                          "where nivel = 5 and monto > 0 and n_contratistas > 0")
     assert completas / n > 0.5, (
-        f"solo {completas} de {n} mercados tienen monto y proveedores. Una categoría "
-        f"sin ninguna de las dos cosas no es una pantalla."
+        f"solo {completas} de {n} subclases activas tienen monto y contratistas."
     )
 
 
@@ -415,7 +369,7 @@ def test_ningun_mercado_supera_una_magnitud_imposible(con):
 
     La contratación pública entera del Ecuador ronda los 7.000 millones al año, y esta
     ventana son dos años."""
-    peor = _uno(con, "select max(monto) from v_mercado")
+    peor = _uno(con, "select max(monto) from mercado_nodo where nivel = 5")
     assert peor is None or peor < 5e9, (
         f"un solo mercado da {peor:,.0f} USD en 24 meses. Es más que toda la "
         f"contratación pública del país en ese periodo: revisa el cálculo."
@@ -426,11 +380,13 @@ def test_el_mercado_no_expone_el_ruc_de_personas_naturales(con):
     """Invariante 9, también aquí: el listado de quién gana es la vista con más
     proveedores por pantalla de todo el producto."""
     n = _uno(con, """
-        select count(*) from v_mercado_proveedor v
-        join entidad e on e.nombre = v.nombre
-        where e.es_persona_natural and v.ruc is not null
+        select count(*) from mercado_nodo_contratista c
+        join entidad e on e.ruc = c.ruc
+        where e.es_persona_natural
+          and exists (select 1 from entidad_publica ep
+                      where ep.ruc_visible = c.ruc and ep.ruc is not null)
     """)
-    assert n == 0, f"{n} personas naturales aparecen con RUC en el listado de mercado"
+    assert n == 0, f"{n} personas naturales con RUC visible en el listado de mercado"
 
 
 # --- el muro, comprobado desde el otro lado -------------------------------------
@@ -448,7 +404,7 @@ def test_la_funcion_de_huerfanos_no_devuelve_nada_sin_plan(con):
 
     ruc = _uno(con, """
         select proveedor_ruc from proceso_resumen
-        where proveedor_ruc is not null and categoria_id is not null
+        where proveedor_ruc is not null and cpc_nodo is not null
         group by 1 order by count(*) desc limit 1
     """)
     n = _uno(con, "select count(*) from compradores_huerfanos(%s)", ruc)
@@ -537,31 +493,28 @@ def test_el_indice_de_mercados_responde(con):
     Filtrada por una categoría la misma vista respondía en 0,25 s; lo que no escala es
     listar. Al desplegar medí 1,25 s y lo di por bueno, que con el límite de sentencia en
     pocos segundos era el aviso de que quedaba un factor cuatro."""
-    n = _uno(con, "select count(*) from v_mercado")
-    assert n > 500, f"v_mercado tiene {n} filas; se esperan cientos"
-
-    # La consulta exacta de la página, con su orden y su límite.
+    # La consulta exacta de la raíz del árbol: las secciones por monto.
     with con.cursor() as cur:
         cur.execute("""
-            select cpc, nombre, n_procesos, monto, n_proveedores, n_entidades
-            from v_mercado order by monto desc limit 120
+            select codigo, nombre, n_procesos, monto, n_contratantes, n_contratistas
+            from mercado_nodo where nivel in (0, 1) order by monto desc
         """)
         filas = cur.fetchall()
-    assert len(filas) == 120, f"el índice devuelve {len(filas)} filas, no 120"
-    assert filas[0][3] > 0, "la categoría de mayor monto no tiene monto"
+    assert len(filas) == 11, f"el índice devuelve {len(filas)} filas, no 11 (10 + sin clasificar)"
+    assert filas[0][3] > 0, "la sección de mayor monto no tiene monto"
 
 
 def test_el_resumen_de_mercados_no_esta_rancio(con):
     """Una vista materializada que nadie refresca miente en silencio: da las cifras del
     día anterior sin decir que son viejas. Se compara contra la fuente de la que sale."""
-    if not _uno(con, "select count(*) from v_mercado"):
-        pytest.skip("sin la migración 0021")
-    vivas = _uno(con, "select count(distinct categoria_id) from proceso_resumen "
-                      "where categoria_id is not null")
-    materializadas = _uno(con, "select count(*) from v_mercado")
-    assert materializadas >= vivas * 0.9, (
-        f"la vista tiene {materializadas} categorías y hay {vivas} con procesos: "
-        f"falta un `refresh materialized view v_mercado`."
+    vivas = _uno(con, "select count(distinct cpc_nodo) from proceso_resumen "
+                      "where cpc_nodo is not null")
+    activas = _uno(con, "select count(*) from mercado_nodo where nivel = 5 and n_procesos > 0")
+    # El árbol usa el corte estadístico y los vivos incluyen el mes en curso: puede
+    # haber algo menos en el árbol, nunca un orden de magnitud menos.
+    assert activas >= vivas * 0.7, (
+        f"el árbol tiene {activas} subclases activas y hay {vivas} con procesos: "
+        f"faltan los `refresh materialized view` del árbol."
     )
 
 

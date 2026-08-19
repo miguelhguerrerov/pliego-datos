@@ -378,61 +378,12 @@ def escribir(con, nombres: dict[str, str], por_ocid: dict[str, str],
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="Construye la taxonomía desde el CPC")
-    p.add_argument("--seco", action="store_true", help="construye y muestra, sin escribir")
-    p.add_argument("--sin-modelo", action="store_true",
-                   help="nombra solo con la descripción oficial, sin llamar al modelo")
-    args = p.parse_args()
-
-    from precios import descargar_items, meses_de_la_ventana
-
-    ventana = meses_de_la_ventana()
-    print(f"ventana: {len(ventana)} meses")
-    items = descargar_items(ventana)
-    print(f"ítems leídos: {len(items):,}")
-
-    descripciones, por_ocid = agrupar_items(items)
-    cpc_completo = {o: c for o, (c, _) in cpc_dominante(items).items()}
-    print(f"subclases CPC: {len(descripciones):,}  ·  procesos con categoría: {len(por_ocid):,}")
-
-    # Las que ya tienen nombre se leen ANTES de nombrar: nombrar y descartar despues es
-    # pagar 350 llamadas para tirarlas.
-    ya = {}
-    if not args.seco:
-        from carga import conexion as _con
-        with _con() as c, c.cursor() as cur:
-            cur.execute("select cpc, nombre from categoria where cpc is not null")
-            ya = dict(cur.fetchall())
-
-    bautizador = (lambda g, d: nombre_de_respaldo(d)) if args.sin_modelo else bautizar
-    nombres = resolver_nombres(descripciones, bautizador=bautizador, ya_nombradas=ya)
-
-    grandes = sorted(descripciones, key=lambda g: -sum(descripciones[g].values()))
-    print("\nlas 15 subclases con más ítems:")
-    for g in grandes[:15]:
-        print(f"  {g}  {sum(descripciones[g].values()):>7,} ítems  {nombres[g]}")
-
-    if args.seco:
-        return 0
-
-    from carga import conexion
-
-    with conexion() as con:
-        n_cat, n_proc = escribir(con, nombres, por_ocid, cpc_completo, descripciones)
-        print(f"\ncategorías: {n_cat:,}  ·  procesos recategorizados: {n_proc:,}")
-
-        # El referencial que el CSV no trae para subasta inversa: el 22,1% de los
-        # procesos convocados salía sin cifra, y los ítems del JSON la recuperan.
-        refs = referencial_de_items(items)
-        n_ref = completar_referencial(con, refs)
-        print(f"referencial reconstruido de ítems: {n_ref:,} procesos "
-              f"(de {len(refs):,} calculables)")
-    return 0
-
-
-
-
-# --- el referencial que el CSV no trae ------------------------------------------
+    raise SystemExit(
+        "La construccion de la taxonomia del LLM murio con D-045. La asignacion de "
+        "CPC vive en src/clasifica_cpc.py (flujo taxonomia.yml); los nombres son los "
+        "oficiales de cpc_nivel. Este modulo queda como biblioteca: cpc_dominante, "
+        "agrupar_items y el referencial de items."
+    )
 
 def referencial_de_items(items: list[dict]) -> dict[str, float]:
     """Monto convocado de cada proceso, reconstruido de sus ítems.

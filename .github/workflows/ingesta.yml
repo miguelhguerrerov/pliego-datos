@@ -63,14 +63,13 @@ jobs:
                   # clasificacion mensual llega con ~4 meses de retraso.
                   cur.execute("select asignar_cpc_desde_items()")
                   print("cpc desde items:", cur.fetchone()[0], "procesos")
-                  cur.execute("refresh materialized view concurrently v_mercado")
                   cur.execute("refresh materialized view concurrently v_portada")
                   cur.execute("refresh materialized view concurrently mercado_nodo")
                   cur.execute("refresh materialized view concurrently mercado_nodo_metodo")
                   cur.execute("refresh materialized view concurrently mercado_nodo_contratista")
                   cur.execute("refresh materialized view concurrently mercado_nodo_contratante")
               con.commit()
-          print("v_mercado y v_portada refrescadas")
+          print("agregados del arbol refrescados")
           PY
 
       - name: Detalle de los procesos abiertos
@@ -86,6 +85,26 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: python src/abiertos.py
+
+      - name: CPC de los abiertos recien cargados
+        # Con los items del dia ya en proceso_item, los abiertos toman su CPC y el
+        # arbol se refresca con ellos. Antes del paso de abiertos la funcion solo veria
+        # los items de ayer. Ver D-045.
+        continue-on-error: true
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "src")
+          from carga import conexion
+          with conexion() as con:
+              with con.cursor() as cur:
+                  cur.execute("select asignar_cpc_desde_items()")
+                  print("cpc desde items (tras abiertos):", cur.fetchone()[0])
+                  cur.execute("refresh materialized view concurrently mercado_nodo")
+              con.commit()
+          PY
 
       - name: Informe de cobertura
         # Informativo mientras el backfill este en curso: falla solo si faltan meses
