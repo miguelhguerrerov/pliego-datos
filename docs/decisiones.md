@@ -1700,3 +1700,82 @@ y la que se indexa, se sirve sin tocar Supabase. Un `Suspense` mantiene la cabec
 visible mientras llega la tabla.
 
 Migrar a `cacheComponents` queda pendiente y es la vía para tener además el HTML estático.
+
+---
+
+## D-045 — La clasificación CPC oficial sustituye a la taxonomía del LLM
+
+**18-19 de agosto de 2026.** La decisión de más alcance desde D-002. Pedida por el
+cliente tras ver «Materiales De Construcción» repetido 36 veces y «construcción»
+partida en 87 pedazos.
+
+### Lo que había y por qué murió
+
+Dos taxonomías conviviendo: 242 categorías por embeddings (muertas, 0 procesos) y
+1.337 nombradas por LLM subclase a subclase. Con 1.337 llamadas independientes y sin
+vocabulario compartido, el 27% de las subclases compartía nombre con otra y una se
+llamaba literalmente «Medicamento antiviral y antibiótico no, es más genérico: Med».
+**No había que inventar una jerarquía: la CPC ya lo es.** Había que cargarla.
+
+### La fuente y su validación (fase 0)
+
+`referencia/cpc_clasificacion.csv` (3.725 nodos, extraído del navegador oficial) y
+`referencia/umbral_vae.csv` (30.098 productos con umbral VAE, **latin-1**). Validados
+antes de cargar: cero fallos de integridad, 55/55 nodos contra el HTML oficial,
+las 2.025 subclases con productos existen todas, y los 30.098 productos cuelgan del
+árbol. Cinco subclases sin nombre en el portal heredan el de su clase (documentado en
+`referencia/LEEME.md`); la carga se detiene si un fichero nuevo trae más.
+
+**Cabecera contra renglones, medido en la fuente**: el CPC de cabecera coincide en
+subclase con los ítems en el **100% de 3.564 procesos**. Agregar por cabecera es fiel.
+
+### El modelo (fases 1-3)
+
+- `cpc_nivel` (árbol, el código ES el prefijo) y `cpc_producto` (hojas + VAE). El VAE
+  vive en el producto: 276 subclases tienen varios umbrales.
+- `proceso_resumen.cpc_nodo` por **trigger** (una sola copia de la regla): subclase →
+  clase → sin clasificar. Cobertura medida: 99,86% de los procesos con CPC; el 0,5%
+  del monto restante es el cubo «Sin clasificar», **visible en /mercado**.
+- `mercado_nodo` + método + contratistas + contratantes (materializadas): **cada nivel
+  se calcula desde los procesos crudos.** Solo monto y n.º de contratos son aditivos;
+  los distintos NO (división 54: 1.222 proveedores reales contra 1.244 sumando grupos)
+  y las medianas tampoco. `test_arbol.py` hace imposible la suma sin que grite.
+- **El corte estadístico (invariante 10) se aplica en el árbol** — y de paso corrige
+  la violación que la auditoría encontró en v_mercado. Los abiertos van aparte, con el
+  dato del día.
+- Los nodos sin actividad **se muestran con cero** (decisión del cliente): la sección
+  0 —agricultura— está a cero de verdad, y eso es un hallazgo, no un hueco.
+
+### La clasificación diaria y la mensual (fases 5-6)
+
+El CSV diario no trae CPC; los ítems viven en el Parquet mensual (~4 meses de retraso,
+que el corte absorbe). Para el radar, que vive en esos meses:
+
+- **Diario**: `asignar_cpc_desde_items()` — los abiertos toman el CPC de sus propios
+  ítems (cargados por `abiertos.py`). 606 oportunidades etiquetadas el primer día.
+- **Mensual**: `clasifica_cpc.py` asigna desde el Parquet y recupera el referencial de
+  subasta (lo que quedaba vivo de `taxonomia.py`, que ahora es biblioteca). De paso se
+  arregló un roto latente: su main llamaba a `descargar_items` con la firma anterior a
+  D-041 y habría fallado el 5 de septiembre.
+- **La planificación queda sin categoría a propósito**: su método no existe aún, así
+  que su CPC tampoco. El clasificador de texto que la etiquetaba era un adivino, y el
+  CPC oficial es declarado, no adivinado.
+
+### El benchmark (fase 4)
+
+`v_benchmark` gana nombre oficial, VAE y la marca `comparable`, con regla medida:
+«Global» nunca es precio unitario; «Unidad» en las secciones de servicios (5-9) es el
+contrato entero; «Unidad» en bienes se queda — una motoniveladora a 500.000 la unidad
+es un precio real y marcarla por cara sería mentir.
+
+### Lo que se conservó sin tocar
+
+Las URL indexadas `/mercado/[cpc5]` (la subclase es un nodo del árbol). El muro:
+`compradores_huerfanos()` cambió el JOIN a `cpc_nodo` y **ni un carácter** del
+`exists` sobre suscriptor.
+
+### Números finales
+
+3.725 nodos + 30.098 productos cargados · 99,86% de enganche · 886 subclases activas
+en portada · base en 380 MB tras compactar (el UPDATE masivo de la 0032 la llevó a
+456 y el paso de compactación existe exactamente para eso) · migraciones 0031-0037.

@@ -74,7 +74,8 @@ Este documento es el tablero. El *por qué* de cada decisión está en `decision
 
 | Actividad | Estado | Nota |
 |---|---|---|
-| Migraciones `0001`–`0030` | Hecho | Toda la estructura en SQL |
+| Migraciones `0001`–`0037` | Hecho | Toda la estructura en SQL |
+| Taxonomia CPC oficial (D-045) | **Hecho** | Arbol de 5 niveles + 30.098 productos con umbral VAE. /mercado navega por seccion → subclase con contratos, contratantes, contratistas y estadisticas por nivel. El LLM se desmonto entero |
 | Desglose de renglón por método | Hecho | `unit.value.amount` es el total en subasta inversa y el precio por unidad en el resto. La regla vive en `normaliza.desglosar_renglon()`. Ver D-041 |
 | Paginacion, orden y busqueda en las listas | Hecho | Las siete pantallas con tabla: total real, cabeceras que ordenan, filtro y paginas. Ver D-044 |
 | Migrar a `cacheComponents` para HTML estatico | Pendiente | Hoy la cache es de datos. Es la via para que la primera pagina vuelva a ser estatica |

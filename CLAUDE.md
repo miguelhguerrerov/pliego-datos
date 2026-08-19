@@ -54,7 +54,7 @@ Cosas que parecen buena idea al empezar una sesión en frío y no lo son.
 | «Los datos del mes pasado ya están completos» | Un mes tarda 4–5 meses en cerrar. En agosto de 2026, julio estaba al 59%. |
 | «Stripe para cobrar» | No opera en Ecuador. Transferencia + factura electrónica; PayPhone después. |
 | «pgvector para la búsqueda semántica» | Los embeddings no caben en 500 MB. Van en Parquet, truncados a 256 dimensiones. |
-| «Clasificar cada proceso con un LLM» | Son 2,77 M llamadas. Embeddings + agrupamiento + etiquetar solo los grupos: de ~50 USD a ~2 USD. |
+| «Clasificar cada proceso con un LLM» | Se intentó y murió (D-045): 1.337 nombres generados repetían el mismo texto en hasta 36 subclases. La CPC oficial YA es la jerarquía, con nombres: se carga de `referencia/`, no se inventa. |
 | «Un cron de Vercel para la ingesta» | Timeout garantizado. Va en Actions. |
 | «Sumo estas cifras en el cliente y listo» | PostgREST corta en **1.000 filas**: la portada dio 56 M donde el real eran 3.203 M, sin error visible. Todo `sum`/`count`/`avg` va en una vista. |
 | «Verificar un subdominio aparte en Resend» | El plan gratuito permite un solo dominio y `darkmelon.com` ya lo ocupa. |
@@ -67,6 +67,7 @@ Cosas que parecen buena idea al empezar una sesión en frío y no lo son.
 | «Pongo un `limit` y ya» | Una lista truncada **sin total se lee como completa**. `/mercado` daba 120 de 1.065 y `/radar` 60 de 4.393, sin un solo `count: exact` en toda la aplicacion. El componente `Tabla` exige `total`. Ver D-044. |
 | «Ordeno y filtro la tabla en el cliente» | PostgREST corta en 1.000 filas y el radar tiene 4.393: no caben. Ademas el orden no tendria URL —ni enlazable ni indexable— y filtrar en el navegador exige mandar antes los datos, que es lo que el muro no permite. |
 | «Activo `cacheComponents` para tener PPR» | En Next 16 invierte la cache de la aplicacion entera: todo dinamico salvo lo marcado con `use cache`. Hasta terminar esa migracion, portada y fichas consultarian Supabase en cada visita. Ver D-044. |
+| «Sumo los hijos del arbol para sacar el padre» | Solo el monto y el n.º de contratos son aditivos. Los contratistas DISTINTOS no (la division 54 tiene 1.222 reales contra 1.244 sumando grupos) y las medianas tampoco. Cada nivel se calcula desde los procesos crudos; `test_arbol.py` lo vigila. Ver D-045. |
 
 ---
 
@@ -291,11 +292,11 @@ correspondiente**, no después.
 |---|---|
 | Historico | **140 de 140 meses.** 2.774.263 procesos frente a 2.774.265 de la API |
 | Agregados | 77.693 entidades · 264.276 entidad_ano · 168.151 relaciones · 256 baja_metodo |
-| Taxonomia | 242 categorias tras fusionar · 262.244 procesos clasificados |
-| Migraciones | 0001-0030 aplicadas. `migrar.yml` las aplica desde Actions, con `recalcular` |
+| Taxonomia | **CPC oficial** (D-045): 3.725 nodos + 30.098 productos con VAE · 99,86% de enganche · el LLM murio |
+| Migraciones | 0001-0037 aplicadas. `migrar.yml` las aplica desde Actions, con `recalcular` |
 | Parquet | **Republicandose los 140 meses** con esquema declarado (D-028), 4 tandas |
 | Espacio | 379 MB de 460 presupuestados |
-| Pruebas | 107 verdes. `test_renglones.py` comprueba que los renglones sumen el monto (D-041) |
+| Pruebas | 120+ verdes. `test_arbol.py` vigila que nadie sume los distintos del arbol (D-045) |
 | Aplicacion | Next.js 16.3.1 en Vercel. Portada, radar, buscador, ficha de proveedor y ficha de entidad |
 
 **Flujos programados, corriendo solos:** ingesta 09:30 UTC, agregados 09:48. Verdes.
